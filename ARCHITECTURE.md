@@ -48,15 +48,22 @@ Unlike Headerwatch, the AI reviewer sits on the message path. The guard waits fo
 | **Scan** | [scan.ts](src/scan.ts) | `mcpwatch scan` runs before any server starts. It checks the MCP server lists of Claude Desktop, Claude Code, Cursor, VS Code and Windsurf (MS001–MS007). |
 | **Demo server** | [test/fixtures/demo-server](test/fixtures/demo-server) | A safe-to-attack server with 10 tools and the middleware built in. The tests run against it; any MCP client can connect to it. |
 
-### Three ways in
+### Four ways in
 
-All three run the same `Engine`. Only the wrapping differs.
+All four run the same `Engine`. Only the wrapping differs.
 
 | Mode | File | Sits between | Use when |
 |---|---|---|---|
 | Middleware | [middleware.ts](src/middleware.ts) | The SDK's protocol layer and its transport (`GuardedTransport`) | You own a Node/TypeScript server: add `mcpwatch(server)` before `connect()` |
 | stdio proxy | [stdio-proxy.ts](src/stdio-proxy.ts) | The client's stdin/stdout and a child process | A local server you can't edit (`npx …`) |
 | HTTP proxy | [http-proxy.ts](src/http-proxy.ts) | The client and a remote Streamable HTTP URL, including SSE streams | A remote server |
+| Python middleware | [python/mcpwatch](python/mcpwatch), [engine-server.ts](src/engine-server.ts) | The Python SDK's streams (stdio, SSE), or the HTTP layer (ASGI, WSGI, Django middleware) | You own a Python server: MCP SDK, Django, Flask, FastAPI |
+
+**Python.** The Python package doesn't re-implement the rules. It starts `mcpwatch engine` as a child process: one engine per guarded server, with one JSON line per message each way. The Python side only moves messages:
+- **MCP SDK** (`mcpwatch(server)`): wraps the low-level `Server.run`, so stdio and SSE streams are checked, and wraps the app from `streamable_http_app()`.
+- **HTTP adapters** ([http.py](python/mcpwatch/http.py), shared by ASGI, WSGI and Django): a port of the HTTP proxy's handling. They read the POST body, check JSON and SSE responses, and track session ids.
+
+If the engine can't start, `failOpen` decides, as for a guard error in Node.
 
 `Engine.fromClient` and `Engine.fromServer` are async because of the AI reviewer. Each wrapper keeps a promise queue per direction, so a slow review never lets a later message overtake an earlier one.
 
@@ -147,3 +154,4 @@ With a project key, the project's settings win over the guard's local options an
 - **State per process.** Each guard keeps its own sessions and scores. Only pins and the registry are shared, through files.
 - **The AI adds latency and misses things.** A 7B model takes about 0.4–1 s per reviewed message, longer while it loads. In testing it missed a metadata-URL SSRF that MW003 caught. That's why the rules keep the final say.
 - **Polling, not streaming.** The page refreshes every 2 seconds and guards fetch settings every 5.
+- **Python servers need Node.** The Python package is a thin adapter; the engine is the Node one. Each check is a round trip over a local pipe: about 0.3 ms on a laptop without AI review. The Django middleware can't send a reply to the server for a refused server-to-client request (sampling, elicitation): it drops the request and logs it. Wrap the app with `McpWatchASGI` / `McpWatchWSGI` if your server sends those.

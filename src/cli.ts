@@ -4,9 +4,10 @@ import path from "node:path";
 import { checkAi } from "./ai-check.js";
 import { CATALOG } from "./catalog.js";
 import { runDashboard } from "./dashboard.js";
+import { runEngineServer } from "./engine-server.js";
 import { DEFAULT_SERVER, type Reporting } from "./headerwatch.js";
 import { runHttpProxy } from "./http-proxy.js";
-import { HOME, aiFromEnv, loadPolicy, type Mode, type Policy, type PolicyOverrides } from "./policy.js";
+import { HOME, aiFromEnv, loadPolicy, withEnv, type Mode, type Policy, type PolicyOverrides } from "./policy.js";
 import { printReport, reportTo, scan, toEvents, watchConfigs, type ScanOptions, type ServerEntry } from "./scan.js";
 import { runStdioProxy } from "./stdio-proxy.js";
 
@@ -18,6 +19,8 @@ const USAGE = `MCPWatch: security guard for MCP
   mcpwatch scan [scan options]                     check the MCP servers configured on this machine
   mcpwatch scan [scan options] -- <command> [args] check one server command before you install it
   mcpwatch ai [--ai-model <m>] [--ai-url <url>]     check the local AI reviewer with a few sample messages
+  mcpwatch engine [--name <server>] [options]      the engine as a sidecar for other languages (Python),
+                                                   JSON lines on stdin/stdout
   mcpwatch rules                                   list the rules
   mcpwatch pins reset                              forget pinned tool definitions
 
@@ -115,6 +118,20 @@ if (sub === "scan") {
     process.exit(2);
   }
   runHttpProxy(policy, Number(opt("listen") ?? 8800), new URL(upstream), reporting);
+} else if (sub === "engine") {
+  // Options from the guard's own code arrive as JSON; they outrank the environment, as in the middleware.
+  let fromGuard: PolicyOverrides & Reporting & { name?: string } = {};
+  try {
+    fromGuard = JSON.parse(process.env.MCPWATCH_ENGINE_OPTIONS || "{}");
+    const { name, key, server, localLog, pollMs, ...rest } = fromGuard;
+    const guardPolicy = loadPolicy(opt("config") ?? process.env.MCPWATCH_CONFIG, withEnv({ ...overrides, ...rest, ai: { ...overrides.ai, ...rest.ai } }));
+    runEngineServer(guardPolicy, opt("name") ?? name ?? "mcp-server", {
+      key: key ?? reporting.key, server: server ?? reporting.server, localLog, pollMs: pollMs ?? Number(process.env.MCPWATCH_POLL_MS ?? 5000),
+    });
+  } catch (e) {
+    console.error(`[mcpwatch] ${(e as Error).message}`);
+    process.exit(2);
+  }
 } else if (sub === "dashboard") {
   runDashboard(Number(opt("port") ?? 9100), opt("data") ?? path.join(HOME, "server"), policy.eventsFile);
 } else if (sub === "ai") {

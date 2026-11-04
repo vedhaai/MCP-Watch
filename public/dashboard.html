@@ -196,6 +196,7 @@ function status(p) {
 }
 const KINDS = {
   "middleware": ["Node.js / TypeScript MCP server", "Add one line to your server code. Any client that connects is scanned."],
+  "middleware-python": ["Python MCP server", "MCP SDK, Django, Flask or FastAPI: add one line to your server code. Needs Node 20+ installed."],
   "proxy-stdio": ["Any local (stdio) MCP server", "For servers you can't edit (npx, uvx, Python…). Change the client config only."],
   "proxy-http": ["Any remote (HTTP) MCP server", "Run a local proxy in front of the server's URL."],
 };
@@ -303,6 +304,31 @@ mcpwatch(server);   // ← add this line
 await server.connect(transport);`)],
       ["Give it your project key", `<p>Set these where your server runs (PowerShell shown). Or pass them in code: <span class="mono">mcpwatch(server, { projectKey, server })</span>.</p>` +
         copyBlock(`$env:MCPWATCH_PROJECT_KEY = "${p.key}"\n$env:MCPWATCH_SERVER = "${server}"`)],
+      ["Start your server and connect any MCP client", `<p>Nothing changes on the client side. Every request from any client shows up on the Requests tab.</p>`],
+    ];
+  }
+  if (p.kind === "middleware-python") {
+    const py = `${lib.replace(/\\/g, "/")}/python`;
+    return [
+      ["Install MCPWatch in your server's Python environment", copyBlock(`pip install "${py}"`) +
+        `<p>The checks run in the MCPWatch engine, which needs Node 20+. The package starts it for you.</p>`],
+      ["Add one line to your server", copyBlock(
+`# MCP SDK (MCPServer / FastMCP): stdio, SSE and Streamable HTTP
+from mcpwatch import mcpwatch
+mcpwatch(server)                     # ← before server.run()
+
+# Django, settings.py
+MIDDLEWARE = ["mcpwatch.django.McpWatchMiddleware", ...]
+
+# Flask
+from mcpwatch.flask import McpWatch
+McpWatch(app, path="/mcp")
+
+# FastAPI / Starlette
+from mcpwatch import McpWatchASGI
+app.add_middleware(McpWatchASGI, name="my-tools", path="/mcp")`)],
+      ["Give it your project key", `<p>Set these where your server runs (PowerShell shown). Or pass them in code: <span class="mono">mcpwatch(server, project_key=…, server=…)</span>.</p>` +
+        copyBlock(`$env:MCPWATCH_PROJECT_KEY = "${p.key}"\n$env:MCPWATCH_SERVER = "${server}"\n$env:MCPWATCH_ENGINE = 'node "${cli}"'`)],
       ["Start your server and connect any MCP client", `<p>Nothing changes on the client side. Every request from any client shows up on the Requests tab.</p>`],
     ];
   }

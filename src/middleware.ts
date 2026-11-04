@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { Engine, type Msg, type Outcome } from "./engine.js";
 import { DEFAULT_SERVER, buildSinks, followProject } from "./headerwatch.js";
-import { aiFromEnv, loadPolicy, type Mode, type Policy, type PolicyOverrides } from "./policy.js";
+import { loadPolicy, withEnv, type Mode, type PolicyOverrides } from "./policy.js";
 
 // The structural parts of the SDK's Transport that the guard needs. Kept local so a server built
 // against any SDK copy can be wrapped.
@@ -57,17 +57,7 @@ export function mcpwatch(server: GuardableServer, options: McpWatchOptions = {})
   const on = enabled ?? env.MCPWATCH_ENABLED !== "0";
   if (!on) return { enabled: false, mode: "off", setMode: () => {} };
 
-  if (!overrides.mode && env.MCPWATCH_MODE) overrides.mode = env.MCPWATCH_MODE as Mode;
-  if (!overrides.eventsFile && env.MCPWATCH_EVENTS) overrides.eventsFile = env.MCPWATCH_EVENTS;
-  if (!overrides.pinsFile && env.MCPWATCH_PINS) overrides.pinsFile = env.MCPWATCH_PINS;
-  const list = (v?: string) => (v ? v.split(",").map((s) => s.trim()).filter(Boolean) : undefined);
-  overrides.allowedOrigins ??= list(env.MCPWATCH_ALLOWED_ORIGINS);
-  overrides.allowedHosts ??= list(env.MCPWATCH_ALLOWED_HOSTS);
-  if (overrides.requireAuth === undefined && env.MCPWATCH_REQUIRE_AUTH) overrides.requireAuth = env.MCPWATCH_REQUIRE_AUTH === "1";
-  overrides.expectedAudience ??= env.MCPWATCH_AUDIENCE;
-  overrides.ai = { ...aiFromEnv(env), ...overrides.ai };
-  for (const k of Object.keys(overrides) as (keyof Policy)[]) if (overrides[k] === undefined) delete overrides[k];
-  const policy = loadPolicy(env.MCPWATCH_CONFIG, overrides);
+  const policy = loadPolicy(env.MCPWATCH_CONFIG, withEnv(overrides, env));
   const low = ("server" in server ? server.server : server) as Connectable & { _serverInfo?: { name?: string } };
   const serverName = name ?? low._serverInfo?.name ?? "mcp-server";
 

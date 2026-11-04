@@ -1,6 +1,6 @@
 {
   "name": "@vedhaai/mcpwatch",
-  "version": "0.1.0-beta.0",
+  "version": "0.1.0-beta.1",
   "description": "Security guard for MCP servers: middleware or proxy that scans every JSON-RPC message",
   "keywords": ["mcp", "model-context-protocol", "security", "guard", "proxy", "prompt-injection", "tool-poisoning"],
   "repository": {
@@ -28,7 +28,10 @@
   },
   "files": [
     "dist",
-    "public"
+    "public",
+    "python/mcpwatch/*.py",
+    "python/pyproject.toml",
+    "python/README.md"
   ],
   "scripts": {
     "build": "tsc",
@@ -38,6 +41,7 @@
     "demo": "node test/fixtures/demo-server/server.mjs --http 3001",
     "demo:stdio": "node test/fixtures/demo-server/server.mjs",
     "test": "node --test test/*.test.mjs",
+    "test:python": "cd python && python -m pytest",
     "pretest": "tsc",
     "prepublishOnly": "npm test",
     "scan": "node dist/cli.js scan",

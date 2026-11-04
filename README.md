@@ -24,6 +24,7 @@ MCPWatch works with any MCP server and any MCP client. It needs no matching clie
 |---|---|
 | [src/](src) | The guard (middleware `mcpwatch(server)`, plus a proxy for servers you can't edit), the rules, the scanner and the dashboard server |
 | [public/](public) | The dashboard page |
+| [python/](python) | The Python package: the official MCP SDK, Django, Flask, FastAPI, any ASGI or WSGI app |
 | [test/](test) | Tests, plus the demo MCP server they run against |
 
 ## Run it
@@ -63,6 +64,7 @@ npm run demo
 
 1. Open **http://127.0.0.1:9100** and **create an account** (or sign in). Click **New project**, enter a name, and pick how your server is built:
    - **Node/TypeScript server:** middleware.
+   - **Python server** (MCP SDK, Django, Flask, FastAPI): Python middleware.
    - **Any local server:** stdio proxy.
    - **Any remote server:** HTTP proxy.
 2. The **Setup** tab shows the steps with your project key filled in. It says *Waiting…* until your server first contacts the dashboard, then turns **Connected**.
@@ -129,6 +131,19 @@ Events are sent in the background, about once a second. If the dashboard is down
 - Start the demo server with `MCPWATCH_ENABLED=0` to see the same attacks reaching the server.
 - Without a project key, events go to `~/.mcpwatch/events.jsonl`. Open them under **Local events** on the dashboard's Projects page.
 - For HTTP, run `npm run demo`, setting `$env:MCPWATCH_PROJECT_KEY` first to report to a project. Then point any MCP client (or the MCP Inspector, `npx @modelcontextprotocol/inspector`) at http://127.0.0.1:3001/mcp.
+
+## Python servers (MCP SDK, Django, Flask, FastAPI)
+
+The [Python package](python) adds the same guard to a server written in Python, with one line:
+
+```python
+mcpwatch(server)                                         # official MCP SDK: MCPServer / FastMCP, stdio, SSE, HTTP
+MIDDLEWARE = ["mcpwatch.django.McpWatchMiddleware", ...]  # Django settings.py
+McpWatch(app)                                            # Flask (from mcpwatch.flask import McpWatch)
+app.add_middleware(McpWatchASGI)                         # FastAPI / Starlette; McpWatchWSGI for any WSGI app
+```
+
+The checks run in this package's engine, which the Python package starts as a child process (`mcpwatch engine`, JSON lines over stdin/stdout). So Python servers get the same rules, AI reviewer, dashboard reporting and live settings as Node servers, and **Node 20+ must be installed** next to Python. It takes the same `MCPWATCH_*` variables. Options in code are the middleware's in snake_case (`project_key`, `deny_tools`, …). Setup, options and tests: [python/README.md](python/README.md).
 
 ## Proxy: for MCP servers you can't edit
 
@@ -307,10 +322,13 @@ Environment switches for response-side tests:
 npm run build; npm test
 ```
 
-53 tests, most of them end to end with a real MCP SDK client against the demo server:
+55 tests, most of them end to end with a real MCP SDK client against the demo server:
 - [dashboard.test.mjs](test/dashboard.test.mjs) covers accounts (register rules, sign in and out, lockout, per-user projects) and the full flow: create a project, connect the server with its key, see its requests, switch mode and block a client from the dashboard, report from the proxy, and revoke the key by deleting the project.
 - [middleware.test.mjs](test/middleware.test.mjs) covers the middleware over stdio and HTTP: on/off, modes, poisoning, rug pull, and a stand-in Headerwatch server for events, live mode changes and client block lists.
 - [proxy.test.mjs](test/proxy.test.mjs) covers the proxy.
 - [gaps.test.mjs](test/gaps.test.mjs) covers MW010, MW023, MW027–MW029, MW037–MW039 and MB006 on the engine (two engines sharing a registry stand in for two servers), and `mcpwatch scan`: every MS rule, tampering until `--accept`, `--connect` against the poisoned demo server, and scanning a single command.
 - [ai.test.mjs](test/ai.test.mjs) covers the AI reviewer against a stand-in model server. It checks that a finding the patterns miss is blocked and that the model can't clear a rule. It also covers answer checks, advise mode, model down and required, tool definitions and caching, withheld output, secrets masked before the model sees them, and live on/off. It ends with a run through the stdio proxy. It needs no real model.
 - [transport.test.mjs](test/transport.test.mjs) covers MW030–MW036 on the engine, then over HTTP against the demo server: a foreign origin, missing auth and a leaked token are refused.
+- [engine.test.mjs](test/engine.test.mjs) covers `mcpwatch engine`, the sidecar the Python package uses: verdicts, redaction, HTTP refusals, mode changes and options.
+
+The Python package has its own tests (`npm run test:python`, after installing it as shown in [python/README.md](python/README.md#tests)). They cover an SDK server over stdio and Streamable HTTP, Flask, Django, plain ASGI and WSGI apps, and the engine being unavailable.

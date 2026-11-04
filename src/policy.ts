@@ -115,6 +115,23 @@ export function aiFromEnv(env: NodeJS.ProcessEnv = process.env): Partial<AiPolic
   return out;
 }
 
+// The guard's environment variables (MCPWATCH_MODE, MCPWATCH_ALLOWED_ORIGINS, …), under the caller's
+// own options: a setting the caller gave is kept.
+export function withEnv(overrides: PolicyOverrides, env: NodeJS.ProcessEnv = process.env): PolicyOverrides {
+  const out = { ...overrides };
+  if (!out.mode && env.MCPWATCH_MODE) out.mode = env.MCPWATCH_MODE as Mode;
+  if (!out.eventsFile && env.MCPWATCH_EVENTS) out.eventsFile = env.MCPWATCH_EVENTS;
+  if (!out.pinsFile && env.MCPWATCH_PINS) out.pinsFile = env.MCPWATCH_PINS;
+  const list = (v?: string) => (v ? v.split(",").map((s) => s.trim()).filter(Boolean) : undefined);
+  out.allowedOrigins ??= list(env.MCPWATCH_ALLOWED_ORIGINS);
+  out.allowedHosts ??= list(env.MCPWATCH_ALLOWED_HOSTS);
+  if (out.requireAuth === undefined && env.MCPWATCH_REQUIRE_AUTH) out.requireAuth = env.MCPWATCH_REQUIRE_AUTH === "1";
+  out.expectedAudience ??= env.MCPWATCH_AUDIENCE;
+  out.ai = { ...aiFromEnv(env), ...out.ai };
+  for (const k of Object.keys(out) as (keyof Policy)[]) if (out[k] === undefined) delete out[k];
+  return out;
+}
+
 export function loadPolicy(configFile: string | undefined, overrides: PolicyOverrides): Policy {
   let fromFile: PolicyOverrides = {};
   if (configFile) fromFile = JSON.parse(readFileSync(configFile, "utf8"));
