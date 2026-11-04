@@ -293,7 +293,7 @@ function setupSteps(p) {
   const cli = meta.cliPath.replace(/\\/g, "/");
   if (p.kind === "middleware") {
     return [
-      ["Install MCPWatch in your MCP server project", copyBlock(`npm install "${lib}"`)],
+      ["Install MCPWatch in your MCP server project", copyBlock(`npm install @vedhaai/mcpwatch@beta`)],
       ["Add one line before connect()", copyBlock(
 `import { mcpwatch } from "@vedhaai/mcpwatch";
 
@@ -308,10 +308,10 @@ await server.connect(transport);`)],
     ];
   }
   if (p.kind === "middleware-python") {
-    const py = `${lib.replace(/\\/g, "/")}/python`;
     return [
-      ["Install MCPWatch in your server's Python environment", copyBlock(`pip install "${py}"`) +
-        `<p>The checks run in the MCPWatch engine, which needs Node 20+. The package starts it for you.</p>`],
+      ["Install MCPWatch in your server's Python environment", copyBlock(`pip install --pre vedhaai-mcpwatch`) +
+        `<p>The checks run in the MCPWatch engine, which needs Node 20+. The package starts it for you (the first start downloads it with npx). To skip that download, install it once:</p>` +
+        copyBlock(`npm install -g @vedhaai/mcpwatch@beta`)],
       ["Add one line to your server", copyBlock(
 `# MCP SDK (MCPServer / FastMCP): stdio, SSE and Streamable HTTP
 from mcpwatch import mcpwatch
@@ -328,7 +328,7 @@ McpWatch(app, path="/mcp")
 from mcpwatch import McpWatchASGI
 app.add_middleware(McpWatchASGI, name="my-tools", path="/mcp")`)],
       ["Give it your project key", `<p>Set these where your server runs (PowerShell shown). Or pass them in code: <span class="mono">mcpwatch(server, project_key=…, server=…)</span>.</p>` +
-        copyBlock(`$env:MCPWATCH_PROJECT_KEY = "${p.key}"\n$env:MCPWATCH_SERVER = "${server}"\n$env:MCPWATCH_ENGINE = 'node "${cli}"'`)],
+        copyBlock(`$env:MCPWATCH_PROJECT_KEY = "${p.key}"\n$env:MCPWATCH_SERVER = "${server}"`)],
       ["Start your server and connect any MCP client", `<p>Nothing changes on the client side. Every request from any client shows up on the Requests tab.</p>`],
     ];
   }
