@@ -294,7 +294,7 @@ function setupSteps(p) {
     return [
       ["Install MCPWatch in your MCP server project", copyBlock(`npm install "${lib}"`)],
       ["Add one line before connect()", copyBlock(
-`import { mcpwatch } from "mcpwatch";
+`import { mcpwatch } from "@vedhaai/mcpwatch";
 
 const server = new McpServer({ name: "my-tools", version: "1.0.0" });
 // ... server.registerTool(...) as usual

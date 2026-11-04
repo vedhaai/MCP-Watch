@@ -87,12 +87,12 @@ Data lives in `~/.mcpwatch/server/`: `users.json`, `sessions.json`, `projects.js
 ## Add it to your MCP server (middleware)
 
 ```powershell
-npm install <path>/MCP-Watch    # after npm install and npm run build in MCP-Watch
+npm install @vedhaai/mcpwatch@beta
 ```
 
 ```ts
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { mcpwatch } from "mcpwatch";
+import { mcpwatch } from "@vedhaai/mcpwatch";
 
 const server = new McpServer({ name: "my-tools", version: "1.0.0" });
 // ... registerTool(...) as usual
