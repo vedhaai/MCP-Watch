@@ -6,6 +6,11 @@ See the [README](README.md) for setup, and for the full rule and option lists.
 
 ## The whole system
 
+![MCPWatch architecture](docs/architecture.svg)
+
+<details>
+<summary>Same diagram as text</summary>
+
 ```
                               every tool call, tool definition and result
                               (the guard waits for the verdict, ~0.4–1 s)
@@ -27,6 +32,8 @@ See the [README](README.md) for setup, and for the full rule and option lists.
                  │ └──────────────────────────────┘            │     │ ~/.mcpwatch/server/        │
                  └──────────────────────────────────────────────┘     └────────────────────────────┘
 ```
+
+</details>
 
 Unlike Headerwatch, the AI reviewer sits on the message path. The guard waits for its verdict, so a high AI finding can block a call before the tool runs. The two background links (events out, settings back) are the only connection to the dashboard. If the dashboard is down, the MCP server keeps working.
 
