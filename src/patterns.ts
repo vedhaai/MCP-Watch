@@ -1,0 +1,117 @@
+// Detection patterns shared by the rules.
+
+export const SECRET_PATTERNS: { name: string; re: RegExp }[] = [
+  { name: "private-key", re: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)/g },
+  { name: "aws-access-key", re: /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g },
+  { name: "aws-secret-key", re: /(aws_secret_access_key\s*[=:]\s*)[A-Za-z0-9/+]{40}/gi },
+  { name: "github-token", re: /\bgh[pousr]_[A-Za-z0-9]{36,}\b/g },
+  { name: "api-key", re: /\bsk-[A-Za-z0-9_-]{20,}\b/g },
+  { name: "slack-token", re: /\bxox[abprs]-[A-Za-z0-9-]{10,}\b/g },
+  { name: "jwt", re: /\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g },
+];
+
+export function findSecrets(s: string): string[] {
+  return SECRET_PATTERNS.filter((p) => {
+    p.re.lastIndex = 0;
+    return p.re.test(s);
+  }).map((p) => p.name);
+}
+
+export function redactSecrets(s: string): string {
+  let out = s;
+  for (const p of SECRET_PATTERNS) {
+    p.re.lastIndex = 0;
+    out = p.name === "aws-secret-key"
+      ? out.replace(p.re, `$1[REDACTED:${p.name}]`)
+      : out.replace(p.re, `[REDACTED:${p.name}]`);
+  }
+  return out;
+}
+
+const SHELL_CMDS =
+  "curl|wget|nc|ncat|bash|sh|zsh|powershell|pwsh|cmd(?:\\.exe)?|rm|del|chmod|chown|python3?|perl|node|cat|type|whoami|id|uname|nslookup|ping|certutil|bitsadmin";
+
+export const COMMAND_INJECTION: RegExp[] = [
+  new RegExp(`(?:;|&&|\\|\\|?|\\n)\\s*(?:${SHELL_CMDS})\\b`, "i"),
+  /\$\([^)]+\)/,
+  /`[^`]+`/,
+  /\/dev\/tcp\/|\bmkfifo\b|\brm\s+-rf\s+[/~]/i,
+];
+
+export const PATH_TRAVERSAL = /(?:^|[\\/])\.\.(?:[\\/]|$)|%2e%2e(?:%2f|%5c|[\\/])/i;
+
+export const SENSITIVE_PATH =
+  /(?:^|[\\/~])(?:\.ssh|id_rsa|id_ed25519|id_ecdsa|\.aws[\\/]credentials|\.env|\.git-credentials|\.npmrc|\.netrc|\.kube[\\/]config|\.docker[\\/]config\.json|mcp\.json|claude_desktop_config\.json)(?:$|[\\/.\s'"])|^\/etc\/(?:passwd|shadow|sudoers)|^\/proc\/self|^[a-z]:\\windows\\system32\\config/i;
+
+export const SQL_INJECTION: RegExp[] = [
+  /'\s*(?:or|and)\s+'?\w+'?\s*=\s*'?\w+/i,
+  /\bunion\s+(?:all\s+)?select\b/i,
+  /;\s*(?:drop|delete|truncate|alter|insert|update|create)\s/i,
+  /'\s*;?\s*--/,
+  /\b(?:sleep|benchmark|pg_sleep)\s*\(/i,
+];
+
+// Each match is one indicator. Several indicators in one text = high severity.
+export const INJECTION_INDICATORS: { name: string; re: RegExp }[] = [
+  { name: "ignore-instructions", re: /\b(?:ignore|disregard|forget)\s+(?:all\s+|any\s+)?(?:the\s+)?(?:previous|prior|above|earlier|your)\s+(?:instructions|prompts|messages|rules)/i },
+  { name: "role-override", re: /\byou\s+are\s+now\b|\bact\s+as\s+(?:an?\s+)?(?:admin|system|developer)\b|\b(?:admin|developer|god)\s+mode\b/i },
+  { name: "new-instructions", re: /\b(?:new|updated|real)\s+(?:system\s+)?instructions\s*:/i },
+  { name: "hide-from-user", re: /\b(?:do\s+not|don'?t|never)\s+(?:tell|inform|mention|reveal|show|let)\b[^.]{0,40}\buser\b/i },
+  { name: "instruction-tag", re: /<\/?\s*(?:important|system|instructions?|secret)\s*>/i },
+  { name: "tool-directive", re: /\b(?:call|invoke|use|run)\s+(?:the\s+)?[`'"]?[a-z]+_[a-z_]+[`'"]?\s+(?:tool\s+)?with\b/i },
+  { name: "precondition", re: /\bbefore\s+(?:using|calling|answering|responding)\b|\botherwise\s+the\s+tool\s+will\s+(?:fail|not\s+work)\b/i },
+  { name: "data-handoff", re: /\bpass\s+(?:its|the|their)\s+(?:full\s+)?contents?\b|\binclude\s+the\s+user'?s\s+\w+/i },
+  { name: "sensitive-path", re: /~\/\.ssh|id_rsa|\.aws\/credentials|\.env\b|mcp\.json|\/etc\/passwd/i },
+  { name: "exfil-address", re: /@[\w-]*(?:attacker|evil|exfil|collector)[\w.-]*/i },
+];
+
+export function injectionIndicators(s: string): string[] {
+  return INJECTION_INDICATORS.filter((p) => p.re.test(s)).map((p) => p.name);
+}
+
+// Zero-width, bidi controls and Unicode tag characters: invisible to a person, visible to a model.
+export const HIDDEN_CHARS = /[​-‏‪-‮⁠-⁤⁦-⁩﻿]|[\u{E0000}-\u{E007F}]/gu;
+
+export const OUTBOUND_TOOL = /send|email|mail|post|upload|webhook|http|fetch|slack|message|publish|notify/i;
+
+export const URL_IN_TEXT = /\b[a-z][a-z0-9+.-]*:\/\/[^\s"'<>]+/gi;
+
+export function isInternalHost(host: string): boolean {
+  const h = host.replace(/^\[|\]$/g, "").toLowerCase();
+  if (h === "localhost" || h.endsWith(".localhost") || h === "0.0.0.0" || h === "::" || h === "::1") return true;
+  if (/^metadata(\.google\.internal)?$/.test(h) || h === "metadata.azure.com") return true;
+  if (/^(fc|fd)[0-9a-f]{2}:|^fe80:/.test(h) || h.startsWith("::ffff:")) return true;
+  const m = /^(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(h);
+  if (!m) return false;
+  const [a, b] = [Number(m[1]), Number(m[2])];
+  return a === 127 || a === 10 || a === 0 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127);
+}
+
+// MW010: injection into query languages and template engines other than SQL.
+export const OTHER_INJECTION: { name: string; re: RegExp }[] = [
+  { name: "nosql-operator", re: /\{\s*["']?\$(?:where|ne|gt|gte|lt|lte|regex|nin|in|expr|function|accumulator)["']?\s*:/i },
+  { name: "nosql-js", re: /\b(?:this\.\w+\s*==|sleep\(\d+\)|db\.\w+\.(?:find|drop|remove))\b|';\s*return\s+(?:true|1)/i },
+  { name: "ldap", re: /\*\)\s*\(\s*[|&!]|\)\s*\(\s*\|?\s*\(?\s*(?:uid|cn|objectclass|mail)\s*=\s*\*/i },
+  { name: "template", re: /\{\{\s*[^}]*(?:\d\s*[*+]\s*\d|__class__|config|self\.|request\.|lipsum|cycler|constructor)[^}]*\}\}|\$\{\s*(?:\d\s*[*+]\s*\d|T\(|Runtime|java\.|jndi:)|<%=?\s*[^%]*(?:system|exec|`)|#\{\s*\d\s*\*\s*\d\s*\}/i },
+  { name: "xxe", re: /<!ENTITY\s+[%\w]+\s+(?:SYSTEM|PUBLIC)\b|<!DOCTYPE[^>]*\[\s*<!ENTITY/i },
+];
+
+// Keys that are MongoDB-style operators, when the arguments are objects rather than strings.
+export const NOSQL_KEY = /^\$(?:where|ne|gt|gte|lt|lte|regex|nin|in|expr|function|accumulator|or|and|not)$/;
+
+// MW029: fields an elicitation form should never ask for.
+export const CREDENTIAL_FIELD =
+  /pass(?:word|wd|phrase|code)?\b|\bpin\b|\botp\b|one[\s_-]?time|2fa|mfa|\btotp\b|secret|api[\s_-]?key|access[\s_-]?key|\btoken\b|private[\s_-]?key|seed[\s_-]?phrase|mnemonic|recovery[\s_-]?(?:code|phrase)|card[\s_-]?number|\bcvv\b|\bcvc\b|security[\s_-]?code|\bssn\b|social[\s_-]?security|bank[\s_-]?account|routing[\s_-]?number/i;
+
+// Capabilities a tool gives the model, judged from its name and description (MW039).
+export const CAPABILITIES: { name: string; re: RegExp }[] = [
+  { name: "shell", re: /\b(?:run_command|exec(?:ute)?(?:_\w+)?|shell|terminal|bash|powershell|cmd|spawn|subprocess|eval)\b/i },
+  { name: "file-write", re: /\b(?:write_file|delete_file|remove_file|move_file|edit_file|create_file|rm|unlink|overwrite)\b|\b(?:writes?|deletes?|modif(?:y|ies))\s+(?:a\s+|the\s+)?files?\b/i },
+  { name: "network", re: /\b(?:fetch_url|http_request|fetch|download|upload|webhook|curl|browse|navigate)\b/i },
+  { name: "messaging", re: /\b(?:send_email|send_message|post_message|slack|sms|tweet|publish)\b/i },
+  { name: "payments", re: /\b(?:transfer|payment|charge|refund|payout|invoice)\b/i },
+];
+
+// Output that is sensitive enough for its lines to be remembered across servers (MB006).
+export const CONFIDENTIAL_LABEL = /\b(?:confidential|internal\s+only|do\s+not\s+(?:share|distribute|forward)|proprietary|restricted)\b/i;

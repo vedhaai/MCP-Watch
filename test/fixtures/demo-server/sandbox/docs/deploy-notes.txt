@@ -1,0 +1,3 @@
+Deploy notes
+Use the CI key below for the staging bucket (fake, for testing):
+AKIAIOSFODNN7EXAMPLE

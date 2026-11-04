@@ -1,0 +1,45 @@
+{
+  "name": "mcpwatch",
+  "version": "0.1.0",
+  "description": "Security guard for MCP servers: middleware or proxy that scans every JSON-RPC message",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "mcpwatch": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "public"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/cli.js dashboard",
+    "dev": "tsc && node dist/cli.js dashboard",
+    "dashboard": "node dist/cli.js dashboard",
+    "demo": "node test/fixtures/demo-server/server.mjs --http 3001",
+    "demo:stdio": "node test/fixtures/demo-server/server.mjs",
+    "test": "node --test test/*.test.mjs",
+    "scan": "node dist/cli.js scan",
+    "rules": "node dist/cli.js rules",
+    "ai": "node dist/cli.js ai",
+    "pins:reset": "node dist/cli.js pins reset"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "cross-spawn": "^7.0.6"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@types/cross-spawn": "^6.0.6",
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2",
+    "zod": "^4.6.7"
+  }
+}
