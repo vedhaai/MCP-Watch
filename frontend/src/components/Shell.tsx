@@ -26,7 +26,7 @@ import ShowChartIcon from "@mui/icons-material/ShowChart";
 import { useColorScheme } from "@mui/material/styles";
 import { useApp } from "../context";
 import { THEME_MODES, ThemeToggle } from "./ThemeToggle";
-import { MONO } from "../theme";
+import { ACCENT, MONO } from "../theme";
 import logo from "../assets/logo.png";
 
 const SIDEBAR = 232;
@@ -47,12 +47,12 @@ function NavGroup({ title, items }: { title: string; items: NavItem[] }) {
       </Typography>
       {items.map((it) => (
         <ListItemButton key={it.label} component="a" href={it.href} selected={it.active} disabled={it.disabled} sx={{
-          borderRadius: 1.5, py: 0.75, px: 1.25, mb: 0.25, position: "relative",
+          borderRadius: "10px", py: 0.85, px: 1.25, mb: 0.25, position: "relative", overflow: "hidden",
           "&.Mui-selected, &.Mui-selected:hover": { bgcolor: "primary.main", color: "primary.contrastText", "& .MuiListItemIcon-root": { color: "inherit" } },
-          "&.Mui-selected::before": { content: '""', position: "absolute", left: 0, top: 5, bottom: 5, width: 3, borderRadius: 2, bgcolor: "error.main" },
+          "&.Mui-selected::before": { content: '""', position: "absolute", left: 0, top: 0, bottom: 0, width: 3, background: ACCENT },
         }}>
-          <ListItemIcon sx={{ minWidth: 30, color: "text.primary" }}>{it.icon}</ListItemIcon>
-          <ListItemText primary={it.label} />
+          <ListItemIcon sx={{ minWidth: 30, color: "text.primary", "& svg": { fontSize: 19 } }}>{it.icon}</ListItemIcon>
+          <ListItemText primary={it.label} slotProps={{ primary: { sx: { fontSize: 14 } } }} />
         </ListItemButton>
       ))}
     </>
@@ -91,7 +91,7 @@ export function Shell({ route, projectId, children }: { route: string[]; project
         bgcolor: "background.paper",
         display: "flex", flexDirection: "column", position: { md: "sticky" }, top: 0, height: { md: "100vh" },
       }}>
-        <Box component="a" href="#/" sx={{ display: "flex", alignItems: "center", gap: 1.25, px: 2.25, pt: 2.25, pb: 1, color: "inherit", textDecoration: "none" }}>
+        <Box component="a" href="#/" sx={{ display: "flex", alignItems: "center", gap: 1.25, px: 2.25, pt: 2.75, pb: 1.5, color: "inherit", textDecoration: "none" }}>
           <Box component="img" src={logo} alt="" sx={{ width: 32, height: 32 }} />
           <Box>
             <Typography sx={{ fontSize: 18, fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.2 }}>MCPWatch</Typography>
@@ -107,9 +107,9 @@ export function Shell({ route, projectId, children }: { route: string[]; project
           <NavGroup title="Configure" items={configure} />
           <NavGroup title="Workspace" items={workspace} />
         </List>
-        <Box sx={{ borderTop: "1px solid", borderColor: "divider", p: 1.5, display: { xs: "none", md: "block" } }}>
+        <Box sx={{ borderTop: "1px solid", borderColor: "divider", px: 1.5, py: 2, display: { xs: "none", md: "block" } }}>
           <ButtonBase onClick={(e) => setMenu(e.currentTarget)} sx={{ width: "100%", justifyContent: "flex-start", gap: 1.25, p: 0.5, borderRadius: 1.5, "&:hover": { bgcolor: "action.hover" } }}>
-            <Avatar variant="rounded" sx={{ width: 28, height: 28, fontSize: 13, fontWeight: 700, bgcolor: "primary.main", color: "primary.contrastText" }}>
+            <Avatar variant="rounded" sx={{ width: 32, height: 32, fontSize: 13, fontWeight: 700, borderRadius: "10px", background: ACCENT, color: "#2b1a12" }}>
               {user.username.slice(0, 1).toUpperCase()}
             </Avatar>
             <Typography sx={{ flex: 1, textAlign: "left", fontWeight: 600 }} noWrap>{user.username}</Typography>
@@ -122,10 +122,10 @@ export function Shell({ route, projectId, children }: { route: string[]; project
       </Box>
 
       <Box sx={{ minWidth: 0, display: "flex", flexDirection: "column" }}>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 2, px: { xs: 2, md: 3.5 }, py: 1.5, bgcolor: "background.paper", position: { md: "sticky" }, top: 0, zIndex: 5, flexWrap: { xs: "wrap", sm: "nowrap" } }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 2, px: { xs: 2, md: 3.5 }, py: 1.75, bgcolor: "background.paper", position: { md: "sticky" }, top: 0, zIndex: 5, flexWrap: { xs: "wrap", sm: "nowrap" } }}>
           <ButtonBase onClick={() => setPalette(true)} sx={{
-            flex: 1, maxWidth: 520, justifyContent: "flex-start", gap: 1.25, px: 1.5, py: 1, border: "1px solid", borderColor: "divider",
-            borderRadius: 2, bgcolor: "background.paper", color: "text.secondary",
+            flex: 1, maxWidth: 520, justifyContent: "flex-start", gap: 1, px: 1.5, py: 0.6, fontSize: 13, border: "1px solid", borderColor: "divider",
+            borderRadius: 980, bgcolor: "background.paper", color: "text.secondary",
           }}>
             <SearchIcon fontSize="small" />
             <Box component="span" sx={{ flex: 1, textAlign: "left" }}>Jump to a page, project or action</Box>
@@ -137,13 +137,13 @@ export function Shell({ route, projectId, children }: { route: string[]; project
               displayEmpty
               onChange={(e) => (location.hash = `#/p/${e.target.value}/${tab || "requests"}`)}
               renderValue={(v) => projects?.find((p) => p.id === v)?.name ?? <Box component="span" sx={{ color: "text.secondary" }}>Select a project</Box>}
-              sx={{ minWidth: { sm: 220 }, width: { xs: "100%", sm: "auto" }, fontWeight: 600, bgcolor: "background.paper" }}
+              sx={{ minWidth: { sm: 200 }, maxWidth: { sm: 260 }, width: { xs: "100%", sm: "auto" }, fontSize: 13, fontWeight: 600, "& .MuiSelect-select": { py: 0.75 }, bgcolor: "background.paper", borderRadius: "12px" }}
             >
               {(projects ?? []).map((p) => <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>)}
             </Select>
           </Box>
-          <ThemeToggle />
-          <Button variant="contained" startIcon={<AddIcon />} href="#/new">New project</Button>
+          <ThemeToggle size="small" />
+          <Button variant="contained" color="secondary" size="small" startIcon={<AddIcon />} href="#/new" sx={{ whiteSpace: "nowrap", py: 0.6 }}>New project</Button>
         </Box>
         <Box sx={{ flex: 1, bgcolor: "background.default", borderRadius: { md: "22px" }, mr: { md: 1.5 }, mb: { md: 1.5 } }}>
           <Box component="main" sx={{ px: { xs: 2, md: 4 }, pt: { xs: 2.5, md: 4 }, pb: 6, maxWidth: 1440, width: "100%" }}>{children}</Box>

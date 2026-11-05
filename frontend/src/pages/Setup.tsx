@@ -6,7 +6,7 @@ import Typography from "@mui/material/Typography";
 import { CopyBlock, Label } from "../components/ui";
 import { useApp } from "../context";
 import { MODES, status } from "../lib";
-import { MONO } from "../theme";
+import { ACCENT, MONO } from "../theme";
 import type { Meta, Project } from "../types";
 
 const P = ({ children }: { children: ReactNode }) => <Typography sx={{ color: "text.secondary", fontSize: 13, my: 0.5 }}>{children}</Typography>;
@@ -78,7 +78,7 @@ export function SetupTab({ project: p }: { project: Project }) {
   const on = status(p).on;
   return (
     <Box sx={{ maxWidth: 960 }}>
-      <Alert severity={on ? "success" : "warning"} variant="outlined" sx={{ mb: 2, bgcolor: "background.paper" }}>
+      <Alert severity={on ? "success" : "warning"} variant="outlined" sx={{ mb: 2, bgcolor: "background.paper", alignItems: "center" }}>
         <b>{on ? "Connected" : "Waiting for your MCP server…"}</b>{" "}
         {on ? "Your guard is reporting to this project." : "This turns green when the guard first contacts the dashboard."}
       </Alert>
@@ -93,7 +93,7 @@ export function SetupTab({ project: p }: { project: Project }) {
         <Label sx={{ mb: 2 }}>Connect your MCP server</Label>
         {steps(p, meta).map(([title, body], i) => (
           <Box key={title} sx={{ display: "grid", gridTemplateColumns: "28px 1fr", gap: 1.5, mb: 2.25, minWidth: 0 }}>
-            <Box sx={{ width: 28, height: 28, borderRadius: 1.5, bgcolor: "primary.main", color: "primary.contrastText", fontFamily: MONO, fontWeight: 600, display: "grid", placeItems: "center" }}>{i + 1}</Box>
+            <Box sx={{ width: 28, height: 28, borderRadius: "50%", background: ACCENT, color: "#2b1a12", fontWeight: 700, display: "grid", placeItems: "center" }}>{i + 1}</Box>
             <Box sx={{ minWidth: 0 }}>
               <Typography sx={{ fontWeight: 600, mt: 0.4, mb: 0.75 }}>{title}</Typography>
               {body}

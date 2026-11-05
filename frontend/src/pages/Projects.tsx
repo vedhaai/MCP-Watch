@@ -12,6 +12,7 @@ import AddIcon from "@mui/icons-material/Add";
 import { api } from "../api";
 import { Label, PageHead, Tag } from "../components/ui";
 import { useApp } from "../context";
+import { ACCENT } from "../theme";
 import { KINDS, status } from "../lib";
 import type { Project, ProjectKind } from "../types";
 
@@ -55,7 +56,7 @@ function AddProjectCard({ first }: { first: boolean }) {
       border: "1.5px dashed", borderColor: "divider", bgcolor: "background.paper", color: "text.primary", transition: "border-color .2s ease",
       "&:hover": { borderColor: "text.secondary" },
     }}>
-      <Box sx={{ display: "grid", placeItems: "center", width: 44, height: 44, mb: 0.5, borderRadius: "50%", bgcolor: "background.default" }}>
+      <Box sx={{ display: "grid", placeItems: "center", width: 48, height: 48, mb: 0.5, borderRadius: "50%", background: ACCENT, color: "#2b1a12" }}>
         <AddIcon />
       </Box>
       <Typography sx={{ fontWeight: 700, fontSize: 15 }}>{first ? "Guard your first server" : "Guard another server"}</Typography>
@@ -83,14 +84,14 @@ export function NewProjectPage() {
     <>
       <PageHead title="New project" sub="A project gets its own key, settings and request history." />
       <Card sx={{ p: { xs: 2, md: 3 }, maxWidth: 960 }}>
-        <TextField autoFocus label="Project name" placeholder="e.g. Support tools server" value={name} onChange={(e) => { setName(e.target.value); setError(""); }}
+        <TextField label="Project name" placeholder="e.g. Support tools server" value={name} onChange={(e) => { setName(e.target.value); setError(""); }}
           onKeyDown={(e) => e.key === "Enter" && create()} sx={{ width: "100%", maxWidth: 420 }} />
         <Label sx={{ mt: 3 }}>How is your MCP server built?</Label>
         <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 1.25 }}>
           {(Object.entries(KINDS) as [ProjectKind, [string, string]][]).map(([k, [t, d]]) => (
             <ButtonBase key={k} onClick={() => setKind(k)} sx={{
               display: "block", textAlign: "left", p: 1.5, borderRadius: 2, border: "1px solid", bgcolor: "background.paper",
-              borderColor: kind === k ? "text.primary" : "divider", boxShadow: kind === k ? "inset 0 0 0 1px" : "none", color: "text.primary",
+              borderColor: kind === k ? "secondary.main" : "divider", boxShadow: kind === k ? "inset 0 0 0 1px" : "none", color: "text.primary",
             }}>
               <Typography sx={{ fontWeight: 600, mb: 0.5 }}>{t}</Typography>
               <Typography sx={{ fontSize: 12, color: "text.secondary" }}>{d}</Typography>
@@ -98,7 +99,7 @@ export function NewProjectPage() {
           ))}
         </Box>
         <Box sx={{ display: "flex", gap: 1.5, alignItems: "center", mt: 3 }}>
-          <Button variant="contained" onClick={create}>Create project</Button>
+          <Button variant="contained" color="secondary" onClick={create}>Create project</Button>
           <Button variant="outlined" color="inherit" href="#/">Cancel</Button>
           <Typography sx={{ color: "error.main", fontSize: 13 }}>{error}</Typography>
         </Box>

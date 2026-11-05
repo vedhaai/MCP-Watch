@@ -22,11 +22,13 @@ export function Label({ children, sx }: { children: ReactNode; sx?: SxProps<Them
 
 export type Tone = "high" | "medium" | "low" | "ok" | "outline" | "dark";
 
+const tint = (c: string) => `rgba(var(--mui-palette-${c}-mainChannel) / 0.1)`;
+
 const TONES: Record<Tone, SxProps<Theme>> = {
   high: { bgcolor: "error.main", color: "#fff", borderColor: "error.main" },
-  medium: { color: "warning.main", borderColor: "warning.main" },
+  medium: { color: "warning.main", borderColor: "warning.main", bgcolor: tint("warning") },
   low: { color: "text.secondary", borderColor: "divider", bgcolor: "action.hover" },
-  ok: { color: "success.main", borderColor: "success.main" },
+  ok: { color: "success.main", borderColor: "success.main", bgcolor: tint("success") },
   outline: { color: "text.secondary", borderColor: "divider" },
   dark: { bgcolor: "text.primary", color: "background.paper", borderColor: "text.primary" },
 };
@@ -35,7 +37,7 @@ const TONES: Record<Tone, SxProps<Theme>> = {
 export function Tag({ tone = "outline", children, title, sx }: { tone?: Tone; children: ReactNode; title?: string; sx?: SxProps<Theme> }) {
   return (
     <Box component="span" title={title} sx={{
-      display: "inline-flex", alignItems: "center", gap: 0.5, px: 0.875, py: "1px", borderRadius: 1, border: "1px solid",
+      display: "inline-flex", alignItems: "center", gap: 0.5, px: 0.875, py: "1px", borderRadius: 1.25, border: "1px solid",
       fontFamily: MONO, fontSize: 11, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase", whiteSpace: "nowrap", lineHeight: 1.6,
       ...TONES[tone], ...sx,
     } as SxProps<Theme>}>
@@ -51,7 +53,7 @@ export const actionTone = (a: Action): Tone =>
 export function Stat({ n, label, hot }: { n: ReactNode; label: string; hot?: boolean }) {
   return (
     <Card sx={{ px: 2.25, py: 2 }}>
-      <Typography sx={{ fontSize: 30, fontWeight: 600, letterSpacing: "-0.02em", lineHeight: 1.1, fontVariantNumeric: "tabular-nums", color: hot ? "error.main" : "text.primary" }}>{n}</Typography>
+      <Typography sx={{ fontSize: 30, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1.1, fontVariantNumeric: "tabular-nums", color: hot ? "secondary.main" : "text.primary" }}>{n}</Typography>
       <Label sx={{ mt: 0.5, mb: 0, fontSize: 10.5 }}>{label}</Label>
     </Card>
   );
