@@ -64,19 +64,21 @@ Every script:
    - **Python server** (MCP SDK, Django, Flask, FastAPI): Python middleware.
    - **Any local server:** stdio proxy.
    - **Any remote server:** HTTP proxy.
-2. The **Setup** tab shows the steps with your project key filled in. It says *Waiting…* until your server first contacts the dashboard, then turns **Connected**.
-3. Call tools from your MCP client, including attacks such as `read_file` with `../../.ssh/id_rsa`. They appear on the project's **Requests** tab.
+2. The **Setup** page shows the steps with your project key filled in. It says *Waiting…* until your server first contacts the dashboard, then turns **Connected**.
+3. Call tools from your MCP client, including attacks such as `read_file` with `../../.ssh/id_rsa`. They appear on the project's **Requests** page.
 
-The project tabs:
+After sign-in, the sidebar has each project's pages, the top bar switches projects, and **Ctrl+K** jumps to any page, project or action. The theme button (and Ctrl+K) switches between **System**, **Light** and **Dark**; the choice is saved in the browser.
 
-| Tab | What it does |
+The project pages:
+
+| Page | What it does |
 |---|---|
-| **Requests** | Every message checked, with its action, findings, score and redacted evidence (click a row) |
-| **Clients** | MCP clients that connected. **Block** refuses everything from a client; **Trust** lets it through |
-| **Settings** | Mode (`off` / `observe` / `protect` / `enforce`), scoring thresholds, denied tools, transport settings (allowed web origins, require auth, expected token audience), rename, rotate key, clear requests, delete |
+| **Requests** | Totals at the top, then every message checked: filter by action or search, and select one to see its findings, AI review and redacted excerpt |
+| **Clients** | MCP clients that connected, with their sessions and recent messages. **Block** refuses everything from a client; **Trust** lets it through |
 | **Setup** | Connection steps and the project key |
+| **Settings** | Mode (`off` / `observe` / `protect` / `enforce`), scoring thresholds, denied tools, AI review (rules only, a local model, or a model with an API key, plus Test AI), transport settings (allowed web origins, require auth, expected token audience), rename, rotate key, clear requests, delete |
 
-New projects start in **observe** mode: nothing is blocked, and each request shows what enforce would have done. Changes on the Clients and Settings tabs reach the guard within 5 seconds, with no restart.
+New projects start in **observe** mode: nothing is blocked, and each request shows what enforce would have done. Changes on the Clients and Settings pages reach the guard within 5 seconds, with no restart.
 
 **Accounts:** each user signs in with a username and password, and sees only their own projects. Users can have any number of projects, each with its own key. Passwords are stored as scrypt hashes, and sessions use an HttpOnly cookie that lasts 14 days. After 5 wrong passwords, sign-in for that username pauses for 5 minutes. Projects created before accounts existed go to the first account. Guards don't sign in; they use the project key.
 
@@ -152,7 +154,7 @@ For third-party servers (e.g. `npx` packages), put `mcpwatch` in front of the se
 }
 ```
 
-For a remote server, use `npx -y @vedhaai/mcpwatch http --listen 8800 --upstream <url> --project-key mw_...`, then point the client at `http://127.0.0.1:8800/mcp`. A project created as a proxy project shows these steps on its Setup tab with the key filled in. Without `--project-key`, the proxy writes to the local events file.
+For a remote server, use `npx -y @vedhaai/mcpwatch http --listen 8800 --upstream <url> --project-key mw_...`, then point the client at `http://127.0.0.1:8800/mcp`. A project created as a proxy project shows these steps on its Setup page with the key filled in. Without `--project-key`, the proxy writes to the local events file.
 
 ## Modes
 
@@ -205,7 +207,7 @@ How it decides:
 - **Privacy:** secrets and the caller's own token are masked before the text goes to the model. Text is cut at 6,000 characters. Unchanged tool definitions and repeated messages are answered from a cache.
 - **Latency:** with `qwen2.5:7b` on a typical laptop GPU, about 0.4–1 s per reviewed message once the model is loaded. The guard loads the model when it starts. Messages are still delivered in order.
 
-The Requests tab marks AI findings with ✦ and shows each message's AI verdict and review time.
+The Requests page marks AI findings with ✦ and shows each message's AI verdict and review time.
 
 Policy file (all fields optional):
 
