@@ -1,0 +1,25 @@
+{
+  "name": "@vedhaai/mcpwatch-frontend",
+  "version": "0.2.1",
+  "private": true,
+  "description": "MCPWatch dashboard web app. `npm run build` writes it to ../backend/public, which the backend serves and ships.",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p . && vite build",
+    "dev": "vite"
+  },
+  "license": "ISC",
+  "devDependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/icons-material": "^9.5.0",
+    "@mui/material": "^9.5.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.2.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5"
+  }
+}

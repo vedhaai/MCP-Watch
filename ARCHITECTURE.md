@@ -41,22 +41,28 @@ Unlike Headerwatch, the AI reviewer sits on the message path. The guard waits fo
 
 | Part | Code | What it does |
 |---|---|---|
-| **Guard** | [src](src): [engine.ts](src/engine.ts), [rules.ts](src/rules.ts), [state.ts](src/state.ts), [transport.ts](src/transport.ts) | One engine, three ways in (below). Runs the rules, keeps session state in memory, decides allow / throttle / block / strip / redact, and reports in the background. |
-| **AI reviewer** | [ai.ts](src/ai.ts) | Calls any OpenAI-compatible endpoint (Ollama by default) with the relevant slice of the rule catalog. Answers are checked, cached and merged into the rule findings. |
-| **Dashboard** | [dashboard.ts](src/dashboard.ts), [auth.ts](src/auth.ts), [public/dashboard.html](public/dashboard.html) | Plain Node HTTP server on 127.0.0.1:9100. `/api/agent/*` for guards (project key), `/api/*` for the page (login cookie). Stores everything as JSON files. |
-| **Reporting** | [headerwatch.ts](src/headerwatch.ts), [events.ts](src/events.ts) | Batches events to `POST /api/agent/events` about once a second and polls `GET /api/agent/config` every 5 s. It uses the same agent API as Headerwatch, so a Headerwatch server works too. |
-| **Scan** | [scan.ts](src/scan.ts) | `mcpwatch scan` runs before any server starts. It checks the MCP server lists of Claude Desktop, Claude Code, Cursor, VS Code and Windsurf (MS001–MS007). |
-| **Demo server** | [test/fixtures/demo-server](test/fixtures/demo-server) | A safe-to-attack server with 10 tools and the middleware built in. The tests run against it; any MCP client can connect to it. |
+| **Guard** | [engine/src](engine/src): [engine.ts](engine/src/engine.ts), [rules.ts](engine/src/rules.ts), [state.ts](engine/src/state.ts), [transport.ts](engine/src/transport.ts) | One engine, three ways in (below). Runs the rules, keeps session state in memory, decides allow / throttle / block / strip / redact, and reports in the background. |
+| **AI reviewer** | [ai.ts](engine/src/ai.ts) | Calls any OpenAI-compatible endpoint (Ollama by default) with the relevant slice of the rule catalog. Answers are checked, cached and merged into the rule findings. |
+| **Dashboard** | [dashboard.ts](backend/src/dashboard.ts), [auth.ts](backend/src/auth.ts), [frontend/](frontend) | Plain Node HTTP server on 127.0.0.1:9100. It serves the web app (React + TypeScript + MUI, built by Vite into `backend/public/`). `/api/agent/*` for guards (project key), `/api/*` for the page (login cookie). Stores everything as JSON files. |
+| **Reporting** | [headerwatch.ts](engine/src/headerwatch.ts), [events.ts](engine/src/events.ts) | Batches events to `POST /api/agent/events` about once a second and polls `GET /api/agent/config` every 5 s. It uses the same agent API as Headerwatch, so a Headerwatch server works too. |
+| **Scan** | [scan.ts](engine/src/scan.ts) | `mcpwatch scan` runs before any server starts. It checks the MCP server lists of Claude Desktop, Claude Code, Cursor, VS Code and Windsurf (MS001–MS007). |
 
-### Three ways in
+### Four ways in
 
-All three run the same `Engine`. Only the wrapping differs.
+All four run the same `Engine`. Only the wrapping differs.
 
 | Mode | File | Sits between | Use when |
 |---|---|---|---|
-| Middleware | [middleware.ts](src/middleware.ts) | The SDK's protocol layer and its transport (`GuardedTransport`) | You own a Node/TypeScript server: add `mcpwatch(server)` before `connect()` |
-| stdio proxy | [stdio-proxy.ts](src/stdio-proxy.ts) | The client's stdin/stdout and a child process | A local server you can't edit (`npx …`) |
-| HTTP proxy | [http-proxy.ts](src/http-proxy.ts) | The client and a remote Streamable HTTP URL, including SSE streams | A remote server |
+| Middleware | [middleware.ts](engine/src/middleware.ts) | The SDK's protocol layer and its transport (`GuardedTransport`) | You own a Node/TypeScript server: add `mcpwatch(server)` before `connect()` |
+| stdio proxy | [stdio-proxy.ts](engine/src/stdio-proxy.ts) | The client's stdin/stdout and a child process | A local server you can't edit (`npx …`) |
+| HTTP proxy | [http-proxy.ts](engine/src/http-proxy.ts) | The client and a remote Streamable HTTP URL, including SSE streams | A remote server |
+| Python middleware | [python/mcpwatch](python/mcpwatch), [engine-server.ts](engine/src/engine-server.ts) | The Python SDK's streams (stdio, SSE), or the HTTP layer (ASGI, WSGI, Django middleware) | You own a Python server: MCP SDK, Django, Flask, FastAPI |
+
+**Python.** The Python package doesn't re-implement the rules. It starts `mcpwatch engine` as a child process: one engine per guarded server, with one JSON line per message each way. The Python side only moves messages:
+- **MCP SDK** (`mcpwatch(server)`): wraps the low-level `Server.run`, so stdio and SSE streams are checked, and wraps the app from `streamable_http_app()`.
+- **HTTP adapters** ([http.py](python/mcpwatch/http.py), shared by ASGI, WSGI and Django): a port of the HTTP proxy's handling. They read the POST body, check JSON and SSE responses, and track session ids.
+
+If the engine can't start, `failOpen` decides, as for a guard error in Node.
 
 `Engine.fromClient` and `Engine.fromServer` are async because of the AI reviewer. Each wrapper keeps a promise queue per direction, so a slow review never lets a later message overtake an earlier one.
 
@@ -92,7 +98,7 @@ Messages from the server are checked in `Engine.fromServer`. The guard can only 
 
 ## The AI reviewer
 
-[ai.ts](src/ai.ts) and its wiring in `Engine.review`:
+[ai.ts](engine/src/ai.ts) and its wiring in `Engine.review`:
 
 - **What it sees.** Each kind of message is reviewed against its own slice of the catalog, with a hint per rule:
   - tool calls: MW001–MW005 and MW010
@@ -129,12 +135,11 @@ With a project key, the project's settings win over the guard's local options an
 
 | What | Where | Notes |
 |---|---|---|
-| `:9100` | Dashboard | `npm start`, on 127.0.0.1 only |
-| `:3001` | Demo server (HTTP) | `npm run demo` |
+| `:9100` | Dashboard | `npm start` (or `npx @vedhaai/mcpwatch-dashboard`), on 127.0.0.1 only |
 | `:11434` | Ollama | `ollama serve` with `qwen2.5:7b`; any OpenAI-compatible server via `MCPWATCH_AI_URL` |
 | `~/.mcpwatch/server/` | Dashboard data | `users.json`, `sessions.json`, `projects.json`, `events/<id>.jsonl` per project (rotated at 20 MB) |
 | `~/.mcpwatch/pins.json` | Every guard | Pinned tool definitions and server versions; `mcpwatch pins reset` after a deliberate update |
-| `~/.mcpwatch/registry.json` | Every guard | Tool names per server, and hashes of sensitive output lines for one hour (MW027, MW028, MB006) |
+| `~/.mcpwatch/registry.json` | Every guard | Tool names and a tool-list digest per server, and hashes of sensitive output lines for one hour (MW027, MW028, MB006) |
 | `~/.mcpwatch/events.jsonl` | Guards without a key | Local event log, shown under Local events on the dashboard |
 | `~/.mcpwatch/scan-baseline.json` | `mcpwatch scan` | The accepted configs, for MS006 tampering |
 | memory | Each guard | Sessions, scores, call history, the AI cache. Reset on restart. |
@@ -147,3 +152,4 @@ With a project key, the project's settings win over the guard's local options an
 - **State per process.** Each guard keeps its own sessions and scores. Only pins and the registry are shared, through files.
 - **The AI adds latency and misses things.** A 7B model takes about 0.4–1 s per reviewed message, longer while it loads. In testing it missed a metadata-URL SSRF that MW003 caught. That's why the rules keep the final say.
 - **Polling, not streaming.** The page refreshes every 2 seconds and guards fetch settings every 5.
+- **Python servers need Node.** The Python package is a thin adapter; the engine is the Node one. Each check is a round trip over a local pipe: about 0.3 ms on a laptop without AI review. The Django middleware can't send a reply to the server for a refused server-to-client request (sampling, elicitation): it drops the request and logs it. Wrap the app with `McpWatchASGI` / `McpWatchWSGI` if your server sends those.

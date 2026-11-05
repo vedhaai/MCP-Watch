@@ -1,3 +1,0 @@
-Quarterly plan
-- ship the MCP guard POC
-- test with the demo client

@@ -1,0 +1,46 @@
+{
+  "name": "@vedhaai/mcpwatch-dashboard",
+  "version": "0.2.1",
+  "description": "MCPWatch dashboard: projects, keys and the requests your MCP servers' guards report",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "security",
+    "dashboard"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vedhaai/MCP-Watch.git",
+    "directory": "backend"
+  },
+  "homepage": "https://github.com/vedhaai/MCP-Watch#readme",
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "bin": {
+    "mcpwatch-dashboard": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "public"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/cli.js",
+    "pretest": "tsc",
+    "test": "node --test test/*.test.mjs",
+    "prepublishOnly": "npm run build --prefix ../frontend && npm test"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "@vedhaai/mcpwatch": "^0.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2"
+  }
+}
