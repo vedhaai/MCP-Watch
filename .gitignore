@@ -3,6 +3,9 @@ dist/
 .env
 .env.*
 
+# Java package
+target/
+
 # Python package
 .venv*/
 __pycache__/

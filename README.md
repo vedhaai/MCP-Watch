@@ -28,6 +28,7 @@ Each part has its own folder and its own npm package (npm workspaces):
 | [backend/](backend) | `@vedhaai/mcpwatch-dashboard` | The dashboard server: accounts, projects, keys and the events guards report. Started with `mcpwatch-dashboard`; depends on the engine |
 | [frontend/](frontend) | private | The dashboard web app (React, TypeScript, MUI). Its build goes into `backend/public/`, which the backend serves and ships |
 | [python/](python) | `vedhaai-mcpwatch` (PyPI) | The Python package: the official MCP SDK, Django, Flask, FastAPI, any ASGI or WSGI app |
+| [java/](java) | `ai.vedha:mcpwatch` (Maven) | The Java package: the official MCP Java SDK, and a servlet filter for Spring Boot, Quarkus, Jetty or Tomcat |
 
 Each package keeps its tests in its own `test/` folder.
 
@@ -42,7 +43,7 @@ npm install
 npm run dev
 ```
 
-Without a clone, the dashboard runs with `npx @vedhaai/mcpwatch-dashboard` (once that package is published to npm).
+Without a clone, the dashboard runs with `npx @vedhaai/mcpwatch-dashboard`.
 
 This opens the dashboard at http://127.0.0.1:9100. `npm run dev` builds the engine, the frontend and the backend, then starts. `npm start` starts without building. Use it once you've built and haven't changed the code.
 
@@ -53,6 +54,7 @@ Every script:
 | `npm start` / `npm run dev` | Dashboard on :9100. Pass options after `--`, e.g. `npm start -- --port 9200` |
 | `npm run dev:web` | The dashboard web app with hot reload on :5173, using the API of a dashboard running on :9100 |
 | `npm test` | All tests (engine, then backend). One package: `npm test -w engine` or `npm test -w backend` |
+| `npm run test:java` | The Java package's tests (needs Java 17+ and Maven) |
 | `npm run scan` | Check the MCP servers configured on this machine. Pass options after `--`, e.g. `npm run scan -- --connect` |
 | `npm run ai` | Check the local AI reviewer (Ollama) with sample messages |
 | `npm run rules` / `npm run pins:reset` | List the rules / forget pinned tool definitions |
@@ -62,6 +64,7 @@ Every script:
 1. Open **http://127.0.0.1:9100** and **create an account** (or sign in). Click **New project**, enter a name, and pick how your server is built:
    - **Node/TypeScript server:** middleware.
    - **Python server** (MCP SDK, Django, Flask, FastAPI): Python middleware.
+   - **Java server** (MCP Java SDK, Spring Boot, Quarkus): Java middleware.
    - **Any local server:** stdio proxy.
    - **Any remote server:** HTTP proxy.
 2. The **Setup** page shows the steps with your project key filled in. It says *Waiting…* until your server first contacts the dashboard, then turns **Connected**.
@@ -142,6 +145,21 @@ app.add_middleware(McpWatchASGI)                         # FastAPI / Starlette; 
 ```
 
 The checks run in this package's engine, which the Python package starts as a child process (`mcpwatch engine`, JSON lines over stdin/stdout). So Python servers get the same rules, AI reviewer, dashboard reporting and live settings as Node servers, and **Node 20+ must be installed** next to Python. It takes the same `MCPWATCH_*` variables. Options in code are the middleware's in snake_case (`project_key`, `deny_tools`, …). Setup, options and tests: [python/README.md](python/README.md).
+
+## Java servers (MCP Java SDK, Spring Boot, Quarkus, Jetty, Tomcat)
+
+The [Java package](java) adds the same guard to a server written in Java, with one line:
+
+```java
+McpServer.sync(McpWatch.guard(transport))        // official MCP Java SDK: stdio, HTTP+SSE
+new McpWatchFilter("my-tools", options, "/mcp")  // any servlet app, and Streamable HTTP
+```
+
+```xml
+<dependency><groupId>ai.vedha</groupId><artifactId>mcpwatch</artifactId><version>0.1.0</version></dependency>
+```
+
+As for Python, the checks run in this package's engine, which the Java package starts as a child process (`mcpwatch engine`, JSON lines over stdin/stdout), so Java servers get the same rules, AI reviewer, dashboard reporting and live settings as Node servers, and **Node 20+ must be installed** next to Java. It needs Java 17+, takes the same `MCPWATCH_*` variables, and brings no dependencies of its own beyond SLF4J. Setup, options and tests: [java/README.md](java/README.md).
 
 ## Proxy: for MCP servers you can't edit
 
@@ -320,3 +338,5 @@ The backend's 3, in [backend/test](backend/test):
 - [ai-settings.test.mjs](backend/test/ai-settings.test.mjs) covers each project's AI settings: rules only, a local model or an API model, what the guards receive, the key never going back to the browser, and Test AI.
 
 The Python package has its own tests (`npm run test:python`, after installing it as shown in [python/README.md](python/README.md#tests)). They cover an SDK server over stdio and Streamable HTTP, Flask, Django, plain ASGI and WSGI apps, and the engine being unavailable.
+
+The Java package has 59, in [java/src/test](java/src/test/java/ai/vedha/mcpwatch) (`npm run test:java`, needs Java 17+ and Maven). They run against the engine built in this repository, so they check real verdicts: the JSON codec, the sidecar protocol, the HTTP guard's JSON and SSE handling, the servlet filter end to end through a real Jetty server, and the SDK transport and session wrapper.

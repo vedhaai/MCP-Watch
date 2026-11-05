@@ -58,6 +58,37 @@ app.add_middleware(McpWatchASGI, name="my-tools", path="/mcp")`} />],
       start,
     ];
   }
+  if (p.kind === "middleware-java") {
+    return [
+      ["Add MCPWatch to your server's build", <>
+        <CopyBlock text={`<dependency>
+  <groupId>ai.vedha</groupId>
+  <artifactId>mcpwatch</artifactId>
+  <version>0.1.0</version>
+</dependency>`} />
+        <P>Needs Java 17+. The checks run in the MCPWatch engine, which needs Node 20+. The package starts it for you (the first start downloads it with npx). To skip that download, install it once:</P>
+        <CopyBlock text="npm install -g @vedhaai/mcpwatch" />
+      </>],
+      ["Add one line to your server", <CopyBlock text={`// MCP Java SDK (stdio, HTTP+SSE)
+import ai.vedha.mcpwatch.sdk.McpWatch;
+
+var server = McpServer.sync(McpWatch.guard(transport))   // ← wrap your transport provider
+    .serverInfo("my-tools", "1.0.0")
+    .tools(...)
+    .build();
+
+// Spring Boot, Quarkus, Jetty, Tomcat — and Streamable HTTP
+@Bean
+FilterRegistrationBean<McpWatchFilter> mcpwatch() {
+    var r = new FilterRegistrationBean<>(new McpWatchFilter("my-tools", null, "/mcp"));
+    r.addUrlPatterns("/mcp/*");
+    r.setOrder(Ordered.HIGHEST_PRECEDENCE);
+    return r;
+}`} />],
+      ["Give it your project key", <><P>Set these where your server runs (PowerShell shown). Or pass them in code: <M>McpWatchOptions.builder().projectKey(…).server(…).build()</M>.</P><CopyBlock text={env} /></>],
+      start,
+    ];
+  }
   if (p.kind === "proxy-stdio") {
     const cfg = JSON.stringify({ "my-server": { command: "npx", args: ["-y", ENGINE, "--project-key", p.key, "--server", server, "--", "npx", "-y", "@modelcontextprotocol/server-filesystem", "C:/mcp-test"] } }, null, 2);
     return [

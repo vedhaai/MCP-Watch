@@ -21,6 +21,7 @@
     "dev:web": "npm run dev -w frontend",
     "test": "npm test -w engine && npm test -w backend",
     "test:python": "cd python && python -m pytest",
+    "test:java": "cd java && mvn -B test",
     "scan": "node engine/dist/cli.js scan",
     "rules": "node engine/dist/cli.js rules",
     "ai": "node engine/dist/cli.js ai",

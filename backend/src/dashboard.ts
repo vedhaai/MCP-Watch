@@ -17,7 +17,7 @@ const MAX_READ = 5 * 1024 * 1024;
 const MAX_EVENTS_FILE = 20 * 1024 * 1024;
 const KEY_HEADERS = ["x-mcpwatch-key", "x-headerwatch-key"];
 
-export type ProjectKind = "middleware" | "middleware-python" | "proxy-stdio" | "proxy-http";
+export type ProjectKind = "middleware" | "middleware-python" | "middleware-java" | "proxy-stdio" | "proxy-http";
 
 export interface Project {
   id: string;
@@ -296,7 +296,7 @@ async function readJson(req: http.IncomingMessage): Promise<Record<string, unkno
 }
 
 const MODES = ["off", "observe", "protect", "enforce"];
-const KINDS = ["middleware", "middleware-python", "proxy-stdio", "proxy-http"];
+const KINDS = ["middleware", "middleware-python", "middleware-java", "proxy-stdio", "proxy-http"];
 
 // `current`: the saved settings, so an empty key field keeps the saved key.
 function validAi(value: unknown, current: ProjectAi): ProjectAi | string {
