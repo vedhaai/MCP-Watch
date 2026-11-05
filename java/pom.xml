@@ -164,7 +164,12 @@
           <plugin>
             <groupId>org.sonatype.central</groupId>
             <artifactId>central-publishing-maven-plugin</artifactId>
-            <version>0.7.0</version>
+            <!--
+              Keep this current. The Central API evolves, and older plugin builds fail on fields
+              they don't know: 0.7.0 dies with `Unrecognized field "warnings"` while reading the
+              status response, after the upload has already succeeded.
+            -->
+            <version>0.12.0</version>
             <extensions>true</extensions>
             <configuration>
               <!-- The server id in ~/.m2/settings.xml holding the Central Portal token. -->
