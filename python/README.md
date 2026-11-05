@@ -16,6 +16,14 @@ pip install vedhaai-mcpwatch
 npm install -g @vedhaai/mcpwatch     # the engine; without it, the package falls back to npx
 ```
 
+To see every request and change settings live, run the dashboard (a separate package) and create a project for your server; its Setup page shows these steps with your project key filled in:
+
+```powershell
+npx @vedhaai/mcpwatch-dashboard      # http://127.0.0.1:9100
+```
+
+Without a project key, events go to `~/.mcpwatch/events.jsonl`, shown under Local events on the dashboard.
+
 ## Official MCP SDK (stdio, SSE, Streamable HTTP)
 
 ```python

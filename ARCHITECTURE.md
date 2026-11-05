@@ -18,7 +18,7 @@ See the [README](README.md) for setup, and for the full rule and option lists.
                     │                                                             ▼
 ┌────────────┐   ┌──┴──────────── your MCP server ─────────────┐        ┌──────────────────┐
 │ MCP client │   │ ┌──────── MCPWatch guard ─────────────────┐ │        │ Ollama :11434    │
-│ Claude,    │──►│ │ Engine (36 rules, score,  ◄──► AI        │ │        │ qwen2.5:7b       │
+│ Claude,    │──►│ │ Engine (38 rules, score,  ◄──► AI        │ │        │ qwen2.5:7b       │
 │ Cursor, …  │◄──│ │ mode, lists)                  reviewer   │ │        └──────────────────┘
 └────────────┘   │ │   ▲                                      │ │
  message /       │ │   ▼                Event sender ─────────┼─┼──► events, ~1 s ──┐
@@ -37,13 +37,26 @@ See the [README](README.md) for setup, and for the full rule and option lists.
 
 Unlike Headerwatch, the AI reviewer sits on the message path. The guard waits for its verdict, so a high AI finding can block a call before the tool runs. The two background links (events out, settings back) are the only connection to the dashboard. If the dashboard is down, the MCP server keeps working.
 
+## Packages
+
+The repo is an npm workspace. Each part has its own folder, package and tests:
+
+| Folder | Package | Runs where | Depends on |
+|---|---|---|---|
+| [engine/](engine) | `@vedhaai/mcpwatch` (npm) | Inside your MCP server (middleware), as a proxy, or as a sidecar for Python | Nothing of MCPWatch's |
+| [backend/](backend) | `@vedhaai/mcpwatch-dashboard` (npm) | Its own process: `npx @vedhaai/mcpwatch-dashboard` | The engine's public exports: the rule catalog, default policy and `AiReviewer` (for Test AI) |
+| [frontend/](frontend) | private, not published | In the browser; its build goes into `backend/public/`, which the backend serves and ships | The backend's `/api/*` |
+| [python/](python) | `vedhaai-mcpwatch` (PyPI) | Inside your Python MCP server | The engine, started as `mcpwatch engine` |
+
+The engine never depends on the dashboard, so a guard works without one: events then go to `~/.mcpwatch/events.jsonl`.
+
 ## The parts
 
 | Part | Code | What it does |
 |---|---|---|
 | **Guard** | [engine/src](engine/src): [engine.ts](engine/src/engine.ts), [rules.ts](engine/src/rules.ts), [state.ts](engine/src/state.ts), [transport.ts](engine/src/transport.ts) | One engine, three ways in (below). Runs the rules, keeps session state in memory, decides allow / throttle / block / strip / redact, and reports in the background. |
 | **AI reviewer** | [ai.ts](engine/src/ai.ts) | Calls any OpenAI-compatible endpoint (Ollama by default) with the relevant slice of the rule catalog. Answers are checked, cached and merged into the rule findings. |
-| **Dashboard** | [dashboard.ts](backend/src/dashboard.ts), [auth.ts](backend/src/auth.ts), [frontend/](frontend) | Plain Node HTTP server on 127.0.0.1:9100. It serves the web app (React + TypeScript + MUI, built by Vite into `backend/public/`). `/api/agent/*` for guards (project key), `/api/*` for the page (login cookie). Stores everything as JSON files. |
+| **Dashboard** | [dashboard.ts](backend/src/dashboard.ts), [auth.ts](backend/src/auth.ts), [cli.ts](backend/src/cli.ts), [frontend/](frontend) | `@vedhaai/mcpwatch-dashboard`, started with `mcpwatch-dashboard`. Plain Node HTTP server on 127.0.0.1:9100. It serves the web app (React + TypeScript + MUI, built by Vite into `backend/public/`). `/api/agent/*` for guards (project key), `/api/*` for the page (login cookie). Stores everything as JSON files. |
 | **Reporting** | [headerwatch.ts](engine/src/headerwatch.ts), [events.ts](engine/src/events.ts) | Batches events to `POST /api/agent/events` about once a second and polls `GET /api/agent/config` every 5 s. It uses the same agent API as Headerwatch, so a Headerwatch server works too. |
 | **Scan** | [scan.ts](engine/src/scan.ts) | `mcpwatch scan` runs before any server starts. It checks the MCP server lists of Claude Desktop, Claude Code, Cursor, VS Code and Windsurf (MS001–MS007). |
 
