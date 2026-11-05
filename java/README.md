@@ -2,14 +2,15 @@
 
 [![Maven Central](https://img.shields.io/maven-central/v/ai.vedha/mcpwatch.svg)](https://central.sonatype.com/artifact/ai.vedha/mcpwatch)
 
-The [MCPWatch](https://github.com/vedhaai/MCP-Watch) security guard for MCP servers written in Java. It checks every JSON-RPC message between any MCP client and your server, in both directions. It works with:
-- the official [MCP Java SDK](https://github.com/modelcontextprotocol/java-sdk) (stdio and HTTP+SSE)
+The [MCPWatch](https://github.com/vedhaai/MCP-Watch) security guard for MCP servers written in Java. It checks every JSON-RPC message between any MCP client and your server, in both directions, and blocks, throttles, strips or redacts what's dangerous: command and SQL injection, path traversal, SSRF, leaked secrets, poisoned tool definitions, rug pulls, prompt injection in tool output, and more.
+
+Clients need no changes. It works with:
+
+- the official [MCP Java SDK](https://github.com/modelcontextprotocol/java-sdk) — stdio and HTTP+SSE
 - Spring Boot (MVC), Quarkus, Jetty, Tomcat — any servlet application, including Spring AI's MCP server
-- any MCP endpoint reachable through a `jakarta.servlet` filter
+- Streamable HTTP, through the servlet filter
 
-Clients need no changes.
-
-The checks are the same as for Node and Python servers. They run in the MCPWatch engine, which this package starts as a small child process (`mcpwatch engine`). The same engine also provides the AI reviewer, the dashboard reporting and the live settings. **Node.js 20+ must be installed** on the machine running the server.
+## Install
 
 ```xml
 <dependency>
@@ -19,17 +20,28 @@ The checks are the same as for Node and Python servers. They run in the MCPWatch
 </dependency>
 ```
 
-```powershell
-npm install -g @vedhaai/mcpwatch     # the engine; without it, the package falls back to npx
-```
-
-Gradle:
-
 ```kotlin
 implementation("ai.vedha:mcpwatch:0.1.0")
 ```
 
-Needs Java 17+. The package brings **no dependencies of its own** beyond SLF4J: the MCP SDK, Reactor and the servlet API are all `provided`, and JSON is handled by the package's own codec, so it can never force a Jackson or Gson version on your application.
+The checks themselves run in the MCPWatch engine, which this package starts as a small child process (`mcpwatch engine`). The same engine provides the AI reviewer, the dashboard reporting and the live settings, so a Java server gets exactly the verdicts a Node or Python one would. **Node.js 20+ must be installed** on the machine running the server:
+
+```powershell
+npm install -g @vedhaai/mcpwatch     # without it, the package falls back to npx (slower first start)
+```
+
+### Requirements
+
+| | |
+|---|---|
+| Java | 17 or newer |
+| Node.js | 20 or newer, on the same machine |
+| MCP Java SDK | 2.x (`provided` — your application's version is used) |
+| Servlet API | `jakarta.servlet` 5.0+ (built against 6.0) — Spring Boot 3+, Tomcat 10+, Jetty 11+ |
+
+The package brings **no dependencies of its own beyond SLF4J**. The MCP SDK, Reactor and the servlet API are all `provided`, and JSON is handled by the package's own codec, so MCPWatch can never force a Jackson or Gson version on the application it is injected into. A guard that caused a classpath conflict would be self-defeating.
+
+Only `slf4j-api` arrives transitively. Use whichever SLF4J binding your application already has; without one, SLF4J prints a no-op warning and the guard still works.
 
 ## Official MCP SDK (stdio, HTTP+SSE)
 
@@ -44,9 +56,9 @@ var server = McpServer.sync(McpWatch.guard(transport))   // ← the only line ch
     .build();
 ```
 
-`McpWatch.guard` wraps the transport provider: every message the client sends is checked before your tool handlers see it, and every message the server sends is checked before it reaches the client. A blocked call gets a JSON-RPC error (`-32001` blocked, `-32002` throttled) and your tool never runs.
+`McpWatch.guard` wraps the transport provider. When the server registers its session factory, each new connection gets a guarded transport (server → client) and a guarded session (client → server), so both directions pass through the engine. A blocked call gets a JSON-RPC error and your tool handler never runs.
 
-With settings in code:
+With settings in code, and a name identifying this server in the dashboard:
 
 ```java
 McpWatch.guard("my-tools", transport, McpWatchOptions.builder()
@@ -55,6 +67,16 @@ McpWatch.guard("my-tools", transport, McpWatchOptions.builder()
     .denyTools("run_command")
     .build());
 ```
+
+Three overloads:
+
+```java
+McpWatch.guard(provider);                        // settings from the environment and dashboard
+McpWatch.guard(provider, options);               // name defaults to "mcp-server"
+McpWatch.guard("my-tools", provider, options);   // named
+```
+
+Each returns an `McpServerTransportProvider` you pass to `McpServer.sync(...)` or `.async(...)`. When MCPWatch is off (`enabled(false)` or `MCPWATCH_ENABLED=0`) it returns **your own provider unchanged**, so the server runs untouched.
 
 **Streamable HTTP** is guarded with the servlet filter below, not with `guard(...)`. That transport serves MCP over ordinary HTTP requests, and the filter sits where the request headers the transport rules need (MW030–MW036: origin, host, auth, token audience) are still available.
 
@@ -72,9 +94,18 @@ FilterRegistrationBean<McpWatchFilter> mcpwatch() {
 }
 ```
 
-The filter checks the client messages in each POST body, and the server's answer whether it comes back as JSON or as an SSE stream. An SSE stream keeps streaming: each event is checked and passed on as it arrives, and only an incomplete event is held back.
+Register it **first** in the chain. Anything that runs before it can change the body the guard then judges.
 
-In `web.xml` or with `@WebFilter`, everything comes from init parameters instead — `projectKey`, `server`, `mode`, `path`, `name`, `denyTools`, `failOpen`, `enabled`:
+The filter checks the client messages in each POST body, and the server's answer whether it comes back as JSON or as an SSE stream. An SSE stream keeps streaming: each event is checked and passed on as it arrives, and only an incomplete event is held back until the rest of it turns up.
+
+Paths work like the Python adapters: `/mcp` guards `/mcp` and everything under it, several arguments guard several endpoints, and `"*"` guards every path.
+
+```java
+new McpWatchFilter("my-tools", options, "/mcp", "/sse");   // two endpoints
+new McpWatchFilter(engine, "/mcp");                        // share an engine with an SDK server
+```
+
+In `web.xml` or with `@WebFilter`, everything comes from init parameters instead — `name`, `path` (comma-separated), `projectKey`, `server`, `mode`, `denyTools`, `failOpen`, `enabled`:
 
 ```xml
 <filter>
@@ -83,37 +114,143 @@ In `web.xml` or with `@WebFilter`, everything comes from init parameters instead
   <init-param><param-name>projectKey</param-name><param-value>mw_...</param-value></init-param>
   <init-param><param-name>path</param-name><param-value>/mcp</param-value></init-param>
 </filter>
+<filter-mapping>
+  <filter-name>mcpwatch</filter-name>
+  <url-pattern>/*</url-pattern>
+</filter-mapping>
 ```
 
-To share one engine between a filter and an SDK server, build it once and pass it in: `new McpWatchFilter(engine, "/mcp")`.
+## Modes
 
-## Settings
+New dashboard projects start in `observe`. Without a dashboard the default is `enforce`.
 
-Options in code are the Node middleware's, on `McpWatchOptions.builder()`: `projectKey`, `server`, `mode`, `denyTools`, `allowTools`, `allowedOrigins`, `allowedHosts`, `requireAuth`, `expectedAudience`, `windowSeconds`, `throttleAt`, `blockAt`, `failOpen`, `ai`, and `option(name, value)` for anything else the engine takes.
-
-What you leave out comes from the same `MCPWATCH_*` environment variables as the Node and Python packages, read by the engine itself. With a project key, the project's settings in the dashboard win over both and reach the guard within 5 seconds, with no restart.
-
-| Setting | What it does |
+| Mode | Behaviour |
 |---|---|
-| `MCPWATCH_PROJECT_KEY` | Project key from the dashboard. Events go to that project, and its mode and client lists apply live |
-| `MCPWATCH_SERVER` | Dashboard URL (default `http://127.0.0.1:9100`) |
-| `MCPWATCH_ENABLED=0` | Disconnect: the server runs untouched, and `guard(...)` hands back your own provider |
-| `MCPWATCH_MODE` | `off`, `observe`, `protect`, `enforce` (default) |
-| `MCPWATCH_ENGINE` | How to start the engine, when it isn't `mcpwatch` on the PATH (e.g. `node /path/to/cli.js`) |
+| `off` | Pass everything through and record nothing |
+| `observe` | Forward everything; events record what `enforce` would have done |
+| `protect` | Block high-severity findings only |
+| `enforce` | Block high severity; throttle at session score 3, block at 6 (60 s window) |
 
-`failOpen` (true by default) decides what happens while the engine can't be reached: messages pass unchecked, or requests are refused with `-32001`.
+What the guard does to each message:
 
-The mode can be changed at runtime without a restart:
+| | |
+|---|---|
+| Blocked call | Answered with a JSON-RPC error (`-32001` blocked, `-32002` throttled); never forwarded |
+| Poisoned or rug-pulled tool | Removed from `tools/list` |
+| Injected tool result | Replaced with an error result |
+| Secrets in output | Redacted |
+
+Changing the mode at runtime, with no restart:
 
 ```java
 var guarded = (GuardedTransportProvider) McpWatch.guard(transport);
 guarded.setMode("observe");
+guarded.mode();     // the mode in force
+guarded.engine();   // the underlying Engine
 ```
+
+## Settings
+
+Options in code are the Node middleware's, on `McpWatchOptions.builder()`. What you leave out comes from the same `MCPWATCH_*` environment variables as the Node and Python packages, read by the engine itself. **With a project key, the dashboard's settings win over both** and reach the guard within 5 seconds.
+
+| Builder method | Environment | Default | Meaning |
+|---|---|---|---|
+| `projectKey(String)` | `MCPWATCH_PROJECT_KEY` | — | Dashboard project key. Events go there, and the project's mode, AI choice and client lists apply live |
+| `server(String)` | `MCPWATCH_SERVER` | `http://127.0.0.1:9100` | Dashboard URL |
+| `enabled(boolean)` | `MCPWATCH_ENABLED=0` | `true` | `false` leaves the server untouched |
+| `mode(String)` | `MCPWATCH_MODE` | `enforce` | `off`, `observe`, `protect`, `enforce` |
+| `failOpen(boolean)` | | `true` | If the engine can't run: pass messages unchecked, or refuse requests with `-32001` |
+| `denyTools(String...)` | | — | Tools that may never be called (MW009) |
+| `allowTools(String...)` | | — | If set, only these may be called |
+| `allowedOrigins(String...)` | `MCPWATCH_ALLOWED_ORIGINS` | — | HTTP: web origins allowed to call the server (MW030) |
+| `allowedHosts(String...)` | `MCPWATCH_ALLOWED_HOSTS` | not checked | HTTP: host names the server answers to |
+| `requireAuth(boolean)` | `MCPWATCH_REQUIRE_AUTH=1` | `false` | HTTP: refuse requests with no `Authorization` or `X-API-Key` (MW031) |
+| `expectedAudience(String)` | `MCPWATCH_AUDIENCE` | — | HTTP: refuse JWTs whose `aud` doesn't include this (MW036) |
+| `windowSeconds(int)` | | `60` | Behaviour-rule window |
+| `throttleAt(int)` | | `3` | Session score at which calls are throttled |
+| `blockAt(int)` | | `6` | Session score at which calls are blocked |
+| `maxCallsPerWindow(int)` | | `30` | Call flood threshold (MB001) |
+| `maxArgBytes(int)` | | `100000` | Oversized arguments (MW008) |
+| `maxResultBytes(int)` | | `5000000` | Oversized response, withheld (MW023) |
+| `ai(boolean)` / `ai(Map)` | `MCPWATCH_AI=1` | off | AI reviewer; see below |
+| `clients(List, List)` | | — | Clients to block or always allow, overriding the rules in every mode |
+| `eventsFile`, `pinsFile`, `registryFile` | `MCPWATCH_EVENTS`, … | `~/.mcpwatch/…` | Local event log, pinned tool definitions, shared registry |
+| `engineCommand(String...)` | `MCPWATCH_ENGINE` | `mcpwatch` on PATH, else `npx` | How to start the engine, e.g. `engineCommand("node", "/path/to/engine/dist/cli.js")` |
+| `startTimeout(Duration)` | | 120 s | How long to wait for the engine to start |
+| `callTimeout(Duration)` | | 60 s | How long to wait for one message to be checked |
+| `option(String, Object)` | | | Any other engine option, by its own name |
+
+### Connecting to the dashboard
+
+1. Start the dashboard (`npx @vedhaai/mcpwatch-dashboard`) and open http://127.0.0.1:9100.
+2. Create an account, click **New project**, and pick **Java MCP server**.
+3. Copy the project key into `projectKey(...)` or `MCPWATCH_PROJECT_KEY`.
+
+The Setup tab says *Waiting…* until your server first contacts the dashboard, then turns **Connected**. Every request then appears on the project's Requests tab, with its action, findings, score and redacted evidence.
+
+Without a project key, events go to `~/.mcpwatch/events.jsonl` and show under **Local events** on the dashboard's Projects page.
+
+### AI reviewer
+
+With it on, a model reviews every message against the rules on top of the pattern checks, catching what patterns can't — such as instructions to the model hidden in an email body. It can **add findings, never remove them**, so a payload that talks the model into "this is safe" can't undo a rule.
+
+```java
+McpWatchOptions.builder().ai(true).build();                       // local Ollama, qwen2.5:7b
+McpWatchOptions.builder().ai(Map.of(
+        "enabled", true,
+        "url", "http://127.0.0.1:11434/v1",
+        "model", "qwen2.5:7b")).build();
+```
+
+With a project key, the project's **AI review** choice in the dashboard wins, including the model, URL and API key, and is picked up within 5 seconds with no restart. Expect about 0.4–1 s per reviewed message with a 7B model on a laptop GPU. Full details in the [main README](https://github.com/vedhaai/MCP-Watch#ai-reviewer-local-model).
+
+## What it detects
+
+The full catalog is the engine's; run `mcpwatch rules` for it. In summary:
+
+- **Tool calls** — MW001 command injection · MW002 path traversal or sensitive file · MW003 SSRF · MW004 SQL injection · MW005 secret in arguments · MW006 schema violation · MW007 unknown tool · MW008 oversized · MW009 denied tool · MW010 NoSQL, LDAP, template or XXE injection
+- **Tool definitions** — MW020 tool poisoning · MW021 invisible characters · MW024 rug pull · MW027 name collision · MW028 tool shadowing · MW038 server changed · MW039 over-privileged server
+- **Server output** — MW022 prompt injection · MW023 oversized response · MW025 secret leak · MW026 sampling request · MW029 elicitation phishing
+- **Transport, auth and sessions** (HTTP) — MW030 DNS rebinding or cross-site request · MW031 missing authentication · MW032 token passthrough · MW033 session hijacking · MW034 plain HTTP between machines · MW035 client impersonation · MW036 confused deputy · MW037 event stream abuse
+- **Behaviour, over a session** — MB001 call flood · MB002 repeated blocked attempts · MB003 enumeration · MB004 exfiltration chain · MB005 replay · MB006 cross-server leakage
+- **AI reviewer** — MA001 a threat no pattern rule covers · MA002 the model was unreachable while required
+
+## How it works
+
+```
+MCP client ──► your Java server ───────────────────────────────────────────────┐
+               McpWatch.guard(provider)  /  McpWatchFilter                      │
+                 │ each JSON-RPC message, one JSON line   ▲ forward / reply     │
+                 ▼                                        │                     │
+               mcpwatch engine (Node child process): rules, AI reviewer, ───────┼──► dashboard
+               sessions, pins, registry, reporting                               │
+                 allowed messages ──► your tools ───────────────────────────────┘
+```
+
+- **One engine per guarded server**, shared by every connection to it, started on first use or eagerly by `Engine.start()`.
+- **Order is kept.** Checks block on a pipe and can take about a second with the AI reviewer on, so each direction of each session runs them through a `Sequencer` on a shared pool, off the transport thread. A `tools/list` must never overtake its own `initialize`.
+- **If the engine stops,** the next message starts it again, at most once every 10 seconds. Session scores start over.
+- **If the engine can't be reached,** `failOpen` decides, and the error is logged at most once a minute rather than per message.
 
 ## Two limits
 
 - **Streamable HTTP through the SDK wrapper.** `McpWatch.guard` covers the transports that give the server one session per connection (stdio, HTTP+SSE). Use the servlet filter for Streamable HTTP.
 - **Server-to-client requests under the filter.** When the guard refuses a request the *server* sent the client (a sampling or elicitation request, MW026 / MW029), the servlet API gives no way to hand the server an answer: the request is dropped and logged, and the server sees it time out. This is the same limit the Python Django middleware has. The SDK wrapper has no such limit — there the refusal is fed back to the server as though the client had answered.
+
+The SDK wrapper also relies on `McpServerSession` being a non-final class with public methods, since that is the only hook the SDK offers for inbound messages. It is a delegating subclass, so an SDK release that adds a public method to that class would need a matching override here.
+
+## Troubleshooting
+
+| Symptom | Cause |
+|---|---|
+| `could not start mcpwatch: No such file or directory` | Node isn't installed, or the engine isn't on the PATH. Install it, or set `engineCommand(...)` / `MCPWATCH_ENGINE` |
+| Nothing appears in the dashboard | No project key, or the dashboard isn't running. Without a key, events go to `~/.mcpwatch/events.jsonl` |
+| The filter never runs | Its URL pattern doesn't cover the MCP endpoint, or `path` doesn't match. The filter compares against the path **after** the context path |
+| Attacks get through | The project is in `observe` mode — the default for new dashboard projects. Switch to `enforce` on the Settings tab |
+| A legitimate call is blocked | The Requests tab shows the rule and the evidence. Trust the client on the Clients tab, or allow the tool |
+| `NoClassDefFoundError: io/modelcontextprotocol/...` | The MCP SDK is `provided`. Using `McpWatch.guard` requires the SDK on your runtime classpath; the servlet filter alone does not |
+
+Everything the guard logs goes through SLF4J under the logger name `mcpwatch`.
 
 ## Publishing
 
@@ -188,3 +325,7 @@ mvn test
 | `HttpGuardTest` | Path matching, blocked and batched POST bodies, JSON and SSE responses, events split across chunks, multi-line `data:`, session rename |
 | `McpWatchFilterTest` | The filter end to end through a real Jetty server and HTTP client: blocked calls never reaching the servlet, `Content-Length` after a rewrite, SSE still streaming, 403 on a foreign origin |
 | `McpWatchSdkTest` | The transport and session wrapper driven as the real transports drive it: blocked calls, stripped tools, withheld results, message ordering, the session id, and the behaviour rules building up over a session |
+
+## Licence
+
+ISC, as the rest of MCP-Watch. See [LICENSE](LICENSE).
