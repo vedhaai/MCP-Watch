@@ -13,8 +13,8 @@ Then open http://127.0.0.1:9100 and create an account.
 ```
 mcpwatch-dashboard [--port 9100] [--data <dir>] [--events <file>]
 
-  --port <n>       port on 127.0.0.1 (default 9100)
-  --data <dir>     accounts, projects and events (default ~/.mcpwatch/server)
+  --port <n>       port on 127.0.0.1 (default 9100, or MCPWATCH_PORT)
+  --data <dir>     accounts, projects and events (default ~/.mcpwatch/server, or MCPWATCH_DATA)
   --events <file>  local events from guards without a project key, shown under Local events
                    (default ~/.mcpwatch/events.jsonl, or MCPWATCH_EVENTS)
 ```

@@ -29,18 +29,25 @@
     "public"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsoa spec-and-routes && tsc",
     "start": "node dist/cli.js",
-    "pretest": "tsc",
+    "dev": "npm run build && concurrently -k -n build,server -c cyan,green \"nodemon --watch src --ext ts --ignore src/generated --on-change-only --exec \\\"npm run build\\\"\" \"nodemon --watch dist --watch ../engine/dist --ext js --delay 1 dist/cli.js\"",
+    "pretest": "npm run build",
     "test": "node --test test/*.test.mjs",
     "prepublishOnly": "npm run build --prefix ../frontend && npm test"
   },
   "license": "ISC",
   "dependencies": {
-    "@vedhaai/mcpwatch": "^0.2.0"
+    "@tsoa/runtime": "^6.6.0",
+    "@vedhaai/mcpwatch": "^0.2.0",
+    "express": "^5.3.0"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "@types/node": "^26.6.6",
+    "concurrently": "^9.2.5",
+    "nodemon": "^3.1.14",
+    "tsoa": "^6.6.0",
     "typescript": "^7.0.2"
   }
 }

@@ -40,18 +40,22 @@ Needs Node 20+.
 git clone https://github.com/vedhaai/MCP-Watch.git
 cd MCP-Watch
 npm install
-npm run dev
+npm run build
+npm start
 ```
 
 Without a clone, the dashboard runs with `npx @vedhaai/mcpwatch-dashboard`.
 
-This opens the dashboard at http://127.0.0.1:9100. `npm run dev` builds the engine, the frontend and the backend, then starts. `npm start` starts without building. Use it once you've built and haven't changed the code.
+This opens the dashboard at http://127.0.0.1:9100. `npm run build` builds the engine, the frontend and the backend; `npm start` starts without building.
+
+To work on the code, run `npm run dev` and open http://localhost:5173. It runs all three packages in watch mode in one terminal: the engine recompiles, the backend rebuilds and restarts on :9100, and the web app reloads as you save. To work on one package, run `npm run dev` in its folder (`engine/`, `backend/` or `frontend/`) instead. In dev mode, set `MCPWATCH_PORT` or `MCPWATCH_DATA` to change the dashboard's port or data folder (the web app's dev server always sends `/api` to :9100).
 
 Every script:
 
 | Script | What it does |
 |---|---|
-| `npm start` / `npm run dev` | Dashboard on :9100. Pass options after `--`, e.g. `npm start -- --port 9200` |
+| `npm start` | Dashboard on :9100 from the last build. Pass options after `--`, e.g. `npm start -- --port 9200` |
+| `npm run dev` | Engine, backend and web app together in watch mode; open http://localhost:5173 |
 | `npm run dev:web` | The dashboard web app with hot reload on :5173, using the API of a dashboard running on :9100 |
 | `npm test` | All tests (engine, then backend). One package: `npm test -w engine` or `npm test -w backend` |
 | `npm run test:java` | The Java package's tests (needs Java 17+ and Maven) |
