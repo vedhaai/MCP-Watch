@@ -16,15 +16,19 @@
   ],
   "scripts": {
     "build": "npm run build -w engine && npm run build -w frontend && npm run build -w backend",
-    "dev": "npm run build && npm start",
+    "dev": "npm run build -w engine && concurrently -k -n engine,backend,frontend -c blue,green,magenta \"npm run dev -w engine\" \"npm run dev -w backend\" \"npm run dev -w frontend\"",
     "start": "node backend/dist/cli.js",
     "dev:web": "npm run dev -w frontend",
     "test": "npm test -w engine && npm test -w backend",
     "test:python": "cd python && python -m pytest",
+    "test:java": "cd java && mvn -B test",
     "scan": "node engine/dist/cli.js scan",
     "rules": "node engine/dist/cli.js rules",
     "ai": "node engine/dist/cli.js ai",
     "pins:reset": "node engine/dist/cli.js pins reset"
   },
-  "license": "ISC"
+  "license": "ISC",
+  "devDependencies": {
+    "concurrently": "^9.2.5"
+  }
 }

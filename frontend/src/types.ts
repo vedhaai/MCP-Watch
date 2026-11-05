@@ -3,7 +3,7 @@
 export type Severity = "high" | "medium" | "low";
 export type Action = "allow" | "block" | "throttle" | "redact" | "strip";
 export type Mode = "off" | "observe" | "protect" | "enforce";
-export type ProjectKind = "middleware" | "middleware-python" | "proxy-stdio" | "proxy-http";
+export type ProjectKind = "middleware" | "middleware-python" | "middleware-java" | "proxy-stdio" | "proxy-http";
 export type AiProvider = "off" | "local" | "api";
 
 export interface Finding {

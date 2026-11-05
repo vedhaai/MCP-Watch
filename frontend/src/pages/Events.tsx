@@ -64,7 +64,7 @@ export function ListItem({ selected, severity, onClick, title, right, sub }: {
   const edge = severity === "high" ? "error.main" : severity === "medium" ? "warning.main" : severity === "low" ? "text.secondary" : "transparent";
   return (
     <ButtonBase onClick={onClick} sx={{
-      display: "block", width: "100%", textAlign: "left", borderLeft: "3px solid", borderLeftColor: edge, borderRadius: 1.5, px: 1.5, py: 1.1, mb: 0.5,
+      display: "block", width: "100%", textAlign: "left", borderLeft: "4px solid", borderLeftColor: edge, borderRadius: "12px", px: 1.75, py: 1.25, mb: 0.5,
       bgcolor: selected ? "primary.main" : "transparent", color: selected ? "primary.contrastText" : "text.primary",
       "&:hover": { bgcolor: selected ? "primary.main" : "action.hover" },
       "& .sub": { color: selected ? "inherit" : "text.secondary", opacity: selected ? 0.7 : 1 },

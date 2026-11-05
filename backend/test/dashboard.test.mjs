@@ -12,7 +12,13 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const CLI = path.join(here, "..", "dist", "cli.js");
 let PORT = 9191;
 let BASE = `http://127.0.0.1:${PORT}`;
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Waits until the dashboard answers (up to 5 s).
+async function ready() {
+  for (let i = 0; i < 50; i++) {
+    try { await fetch(BASE + "/api/auth/me"); return; } catch { await new Promise((r) => setTimeout(r, 100)); }
+  }
+}
 
 // `cookie` is the signed-in session; requests without one are anonymous.
 async function api(p, opts = {}) {
@@ -36,7 +42,7 @@ function startDashboard(t) {
 
 test("dashboard: accounts, sessions and per-user projects", async (t) => {
   startDashboard(t);
-  await sleep(600);
+  await ready();
 
   // Not signed in: no dashboard data.
   assert.equal((await api("/api/projects")).status, 401);
@@ -80,7 +86,7 @@ test("dashboard: accounts, sessions and per-user projects", async (t) => {
 
 test("dashboard: create a project, configure it for its guards, and revoke its key", async (t) => {
   startDashboard(t);
-  await sleep(600);
+  await ready();
   const { cookie } = await api("/api/auth/register", { method: "POST", body: { username: "owner", password: "owner-pass-1" } });
   const as = (opts = {}) => ({ ...opts, cookie });
 
@@ -92,7 +98,9 @@ test("dashboard: create a project, configure it for its guards, and revoke its k
   assert.equal(p.mode, "observe");
   assert.equal(p.lastSeenAt, null);
   assert.equal((await api("/api/agent/config", { headers: { "x-mcpwatch-key": "mw_wrong" } })).status, 401);
-  assert.equal((await api(`/api/projects/${p.id}`, { cookie, method: "PATCH", body: { mode: "bogus" } })).status, 400);
+  const bogus = await api(`/api/projects/${p.id}`, { cookie, method: "PATCH", body: { mode: "bogus" } });
+  assert.equal(bogus.status, 400);
+  assert.equal(bogus.body.error, "mode must be one of off, observe, protect, enforce");
 
   // Transport settings are validated and reach the guard's config.
   assert.equal((await api(`/api/projects/${p.id}`, { cookie, method: "PATCH", body: { allowedOrigins: ["not a url"] } })).status, 400);
