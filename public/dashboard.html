@@ -293,7 +293,7 @@ function setupSteps(p) {
   const cli = meta.cliPath.replace(/\\/g, "/");
   if (p.kind === "middleware") {
     return [
-      ["Install MCPWatch in your MCP server project", copyBlock(`npm install @vedhaai/mcpwatch@beta`)],
+      ["Install MCPWatch in your MCP server project", copyBlock(`npm install @vedhaai/mcpwatch`)],
       ["Add one line before connect()", copyBlock(
 `import { mcpwatch } from "@vedhaai/mcpwatch";
 
@@ -309,9 +309,9 @@ await server.connect(transport);`)],
   }
   if (p.kind === "middleware-python") {
     return [
-      ["Install MCPWatch in your server's Python environment", copyBlock(`pip install --pre vedhaai-mcpwatch`) +
+      ["Install MCPWatch in your server's Python environment", copyBlock(`pip install vedhaai-mcpwatch`) +
         `<p>The checks run in the MCPWatch engine, which needs Node 20+. The package starts it for you (the first start downloads it with npx). To skip that download, install it once:</p>` +
-        copyBlock(`npm install -g @vedhaai/mcpwatch@beta`)],
+        copyBlock(`npm install -g @vedhaai/mcpwatch`)],
       ["Add one line to your server", copyBlock(
 `# MCP SDK (MCPServer / FastMCP): stdio, SSE and Streamable HTTP
 from mcpwatch import mcpwatch

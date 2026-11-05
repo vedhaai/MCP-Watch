@@ -5,7 +5,7 @@ import { CONFIDENTIAL_LABEL, HIDDEN_CHARS, redactSecrets } from "./patterns.js";
 import { Pins } from "./pins.js";
 import type { Policy, PolicyOverrides } from "./policy.js";
 import path from "node:path";
-import { Registry } from "./registry.js";
+import { Registry, toolsDigest } from "./registry.js";
 import {
   capabilities, checkArgs, checkElicitation, checkServerText, checkShadowing, checkToolCall, checkToolDefinition, finding,
   strings, type Finding, type ToolDef,
@@ -334,9 +334,10 @@ export class Engine {
     let cleaned = 0;
 
     // Other servers on this machine (from the shared registry), for collisions and shadowing.
-    const foreign = this.registry.otherTools(this.serverKey);
+    const fp = toolsDigest(tools);
+    const foreign = this.registry.otherTools(this.serverKey, fp);
     const own = new Set(tools.map((t) => t.name));
-    this.registry.recordTools(this.serverKey, [...own]);
+    this.registry.recordTools(this.serverKey, [...own], fp);
 
     const perTool = tools.map((tool) => {
       const findings = checkToolDefinition(tool);

@@ -22,4 +22,4 @@ def mcpwatch(server, **options):  # type: ignore[no-untyped-def]
 
 
 __all__ = ["Engine", "EngineUnavailable", "HttpGuard", "McpWatchASGI", "McpWatchWSGI", "mcpwatch"]
-__version__ = "0.1.0b0"
+__version__ = "0.1.0"

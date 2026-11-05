@@ -89,7 +89,7 @@ Data lives in `~/.mcpwatch/server/`: `users.json`, `sessions.json`, `projects.js
 ## Add it to your MCP server (middleware)
 
 ```powershell
-npm install @vedhaai/mcpwatch@beta
+npm install @vedhaai/mcpwatch
 ```
 
 ```ts

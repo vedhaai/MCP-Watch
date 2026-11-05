@@ -75,6 +75,17 @@ test("MW027 / MW028: same tool name on two servers, and a description steering a
   assert.ok(list.findings.some((f) => f.rule === "MW028" && f.severity === "medium" && f.where === "tool.weather"));
 });
 
+test("MW027: the same server under another name is not a collision", async () => {
+  const dir = tmp();
+  const tools = [{ name: "read_file", description: "Read a file." }, { name: "send_email", description: "Send an email." }];
+  await listTools(engine(dir, "demo-tools").e, tools);
+  const { e, events } = engine(dir, "mcp-server");
+  await listTools(e, tools);
+  assert.ok(!found(events, "MW027"), "identical tool list");
+  await listTools(e, [tools[0], { name: "send_email", description: "Send an email, any address." }], 2);
+  assert.ok(found(events, "MW027"), "a different list still collides");
+});
+
 test("MW029: elicitation asking for credentials is refused, a normal form passes", async () => {
   const { e } = engine(tmp(), "forms");
   const ask = async (id, properties, message = "Please confirm") =>

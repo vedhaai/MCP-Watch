@@ -27,7 +27,7 @@ Msg = dict[str, Any]
 Outcome = tuple[Msg | None, Msg | None]
 
 BLOCKED = -32001
-NPM_PACKAGE = "@vedhaai/mcpwatch@beta"
+NPM_PACKAGE = "@vedhaai/mcpwatch"
 
 # Options the Python API takes in snake_case, as the engine's policy and reporting fields.
 _OPTION_NAMES = {
@@ -56,7 +56,7 @@ def engine_command(command: str | list[str] | None = None) -> list[str]:
     npx = shutil.which("npx")
     if npx:
         return [npx, "-y", NPM_PACKAGE, "engine"]
-    raise EngineUnavailable("Node.js 20+ is needed: install it, then `npm install -g @vedhaai/mcpwatch@beta`")
+    raise EngineUnavailable("Node.js 20+ is needed: install it, then `npm install -g @vedhaai/mcpwatch`")
 
 
 class EngineUnavailable(RuntimeError):

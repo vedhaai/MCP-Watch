@@ -7,7 +7,8 @@ import path from "node:path";
 // how it learns about the others (tool collisions, shadowing, data moving between servers).
 
 interface Data {
-  servers: Record<string, { tools: string[]; seenAt: number }>;
+  // fp: digest of the whole tool list, to recognize the same server under another name.
+  servers: Record<string, { tools: string[]; fp?: string; seenAt: number }>;
   // sha256 of a normalized line of sensitive output -> the server it came from.
   lines: Record<string, { server: string; t: number }>;
 }
@@ -23,6 +24,12 @@ const digest = (line: string) => createHash("sha256").update(line).digest("hex")
 // The distinctive lines of a text: long enough that a match isn't a coincidence.
 export function linesOf(text: string): string[] {
   return text.split(/\r?\n/).map(normalize).filter((l) => l.length >= MIN_LINE && l.length <= 2000);
+}
+
+// The same tool list (names, descriptions, schemas) gives the same digest, whatever the server is called.
+export function toolsDigest(tools: { name: string; description?: string; inputSchema?: unknown }[]): string {
+  const list = tools.map((t) => [t.name, t.description ?? "", t.inputSchema ?? {}]).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+  return digest(JSON.stringify(list));
 }
 
 export class Registry {
@@ -62,17 +69,18 @@ export class Registry {
     }
   }
 
-  recordTools(server: string, tools: string[]) {
+  recordTools(server: string, tools: string[], fp?: string) {
     const d = this.load();
-    d.servers[server] = { tools: [...new Set(tools)].sort(), seenAt: Date.now() };
+    d.servers[server] = { tools: [...new Set(tools)].sort(), fp, seenAt: Date.now() };
     this.save(d);
   }
 
-  // Tool name -> the other servers that offer a tool with that name.
-  otherTools(server: string): Map<string, string[]> {
+  // Tool name -> the other servers that offer a tool with that name. A server with the exact same
+  // tool list (fp) is this server under another name, e.g. after renaming it, so it is left out.
+  otherTools(server: string, fp?: string): Map<string, string[]> {
     const out = new Map<string, string[]>();
     for (const [name, s] of Object.entries(this.load().servers)) {
-      if (name === server) continue;
+      if (name === server || (fp && s.fp === fp)) continue;
       for (const t of s.tools) out.set(t, [...(out.get(t) ?? []), name]);
     }
     return out;

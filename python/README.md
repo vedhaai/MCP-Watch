@@ -12,8 +12,8 @@ Clients need no changes.
 The checks are the same as for Node servers. They run in the MCPWatch engine, which the package starts as a small child process (`mcpwatch engine`). The same engine also provides the AI reviewer, the dashboard reporting and the live settings. **Node.js 20+ must be installed** on the machine running the server.
 
 ```powershell
-pip install --pre vedhaai-mcpwatch           # beta: --pre until 0.1.0 is released
-npm install -g @vedhaai/mcpwatch@beta     # the engine; without it, the package falls back to npx
+pip install vedhaai-mcpwatch
+npm install -g @vedhaai/mcpwatch     # the engine; without it, the package falls back to npx
 ```
 
 ## Official MCP SDK (stdio, SSE, Streamable HTTP)
@@ -85,7 +85,7 @@ Every adapter takes the Node middleware's options in snake_case. Options you lea
 | `allowed_origins`, `allowed_hosts`, `require_auth`, `expected_audience` | `MCPWATCH_ALLOWED_ORIGINS`, … | HTTP transport checks (MW030–MW036) |
 | `ai` | `MCPWATCH_AI=1`, … | AI reviewer, e.g. `{"enabled": True, "model": "qwen2.5:7b"}` |
 | `fail_open` | | `True` (default): if the engine can't run, messages pass unchecked and an error is logged. `False`: requests are refused |
-| `command` | `MCPWATCH_ENGINE` | How to start the engine, e.g. `node C:/path/to/MCP-Watch/dist/cli.js`. Default: `mcpwatch` on PATH, else `npx -y @vedhaai/mcpwatch@beta` |
+| `command` | `MCPWATCH_ENGINE` | How to start the engine, e.g. `node C:/path/to/MCP-Watch/dist/cli.js`. Default: `mcpwatch` on PATH, else `npx -y @vedhaai/mcpwatch` |
 
 ## How it works
 
