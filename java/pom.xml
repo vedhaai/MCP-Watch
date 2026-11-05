@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>ai.vedha</groupId>
+  <artifactId>mcpwatch</artifactId>
+  <version>0.1.0</version>
+  <packaging>jar</packaging>
+
+  <name>MCPWatch for Java</name>
+  <description>Security guard for MCP servers written in Java: every JSON-RPC message between any
+    client and your server is checked by the MCPWatch engine.</description>
+  <url>https://github.com/vedhaai/MCP-Watch</url>
+
+  <licenses>
+    <license>
+      <name>ISC License</name>
+      <url>https://opensource.org/licenses/ISC</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
+  <scm>
+    <url>https://github.com/vedhaai/MCP-Watch</url>
+    <connection>scm:git:https://github.com/vedhaai/MCP-Watch.git</connection>
+  </scm>
+
+  <properties>
+    <maven.compiler.release>17</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <!-- The official MCP Java SDK and the servlet API are "provided": your server already has them,
+         and MCPWatch must never force a version on it. -->
+    <mcp.version>2.1.0</mcp.version>
+    <servlet.version>6.0.0</servlet.version>
+    <reactor.version>3.7.4</reactor.version>
+    <slf4j.version>2.0.16</slf4j.version>
+    <junit.version>5.11.4</junit.version>
+    <jetty.version>12.0.16</jetty.version>
+  </properties>
+
+  <dependencies>
+    <!-- Logging only; the guard has no runtime dependency of its own. JSON is handled by the
+         package's own codec (ai.vedha.mcpwatch.Json) so it can never clash with the host app's. -->
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-api</artifactId>
+      <version>${slf4j.version}</version>
+    </dependency>
+
+    <!-- Needed only by the SDK wrapper (McpWatch.guard). Servers that use the servlet filter alone
+         never load these classes. -->
+    <dependency>
+      <groupId>io.modelcontextprotocol.sdk</groupId>
+      <artifactId>mcp</artifactId>
+      <version>${mcp.version}</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.projectreactor</groupId>
+      <artifactId>reactor-core</artifactId>
+      <version>${reactor.version}</version>
+      <scope>provided</scope>
+    </dependency>
+
+    <!-- Needed only by McpWatchFilter. -->
+    <dependency>
+      <groupId>jakarta.servlet</groupId>
+      <artifactId>jakarta.servlet-api</artifactId>
+      <version>${servlet.version}</version>
+      <scope>provided</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>${junit.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-simple</artifactId>
+      <version>${slf4j.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <!-- A real servlet container, so McpWatchFilter is tested through actual HTTP rather than mocks:
+         response buffering, Content-Length and SSE streaming only misbehave in a real one. -->
+    <dependency>
+      <groupId>org.eclipse.jetty.ee10</groupId>
+      <artifactId>jetty-ee10-servlet</artifactId>
+      <version>${jetty.version}</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.5.2</version>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-source-plugin</artifactId>
+        <version>3.3.1</version>
+        <executions>
+          <execution>
+            <id>attach-sources</id>
+            <goals><goal>jar-no-fork</goal></goals>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>
