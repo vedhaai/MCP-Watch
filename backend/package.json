@@ -1,6 +1,6 @@
 {
   "name": "@vedhaai/mcpwatch-dashboard",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "MCPWatch dashboard: projects, keys and the requests your MCP servers' guards report",
   "keywords": [
     "mcp",
@@ -34,7 +34,8 @@
     "dev": "npm run build && concurrently -k -n build,server -c cyan,green \"nodemon --watch src --ext ts --ignore src/generated --on-change-only --exec \\\"npm run build\\\"\" \"nodemon --watch dist --watch ../engine/dist --ext js --delay 1 dist/cli.js\"",
     "pretest": "npm run build",
     "test": "node --test test/*.test.mjs",
-    "prepublishOnly": "npm run build --prefix ../frontend && npm test"
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "prepublishOnly": "npm run clean && npm run build --prefix ../frontend && npm test"
   },
   "license": "ISC",
   "dependencies": {
