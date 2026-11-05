@@ -19,9 +19,9 @@ const eyebrowSx = { fontFamily: MONO, fontSize: 11, letterSpacing: "0.14em", tex
 
 function Logo() {
   return (
-    <Box sx={{ display: "flex", alignItems: "center", gap: 1.25 }}>
-      <Box component="img" src={logo} alt="" sx={{ width: 28, height: 28 }} />
-      <Typography sx={{ fontSize: 17, fontWeight: 700, letterSpacing: "-0.02em" }}>MCPWatch</Typography>
+    <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+      <Box component="img" src={logo} alt="" sx={{ width: 40, height: 40 }} />
+      <Typography sx={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.025em" }}>MCPWatch</Typography>
     </Box>
   );
 }
