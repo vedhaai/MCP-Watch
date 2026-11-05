@@ -20,15 +20,15 @@ export const THEME_MODES: [ThemeMode, string, React.ReactNode][] = [
 ];
 
 // Light / dark / follow the system. MUI saves the choice in the browser.
-export function ThemeToggle() {
+export function ThemeToggle({ size = "medium" }: { size?: "small" | "medium" }) {
   const { mode, setMode } = useColorScheme();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const current = THEME_MODES.find(([m]) => m === (mode ?? "system")) ?? THEME_MODES[0];
   return (
     <>
       <Tooltip title={`Theme: ${current[1]}`}>
-        <IconButton aria-label="Theme" onClick={(e) => setAnchor(e.currentTarget)}
-          sx={{ border: "1px solid", borderColor: "divider", borderRadius: 2, bgcolor: "background.paper", color: "text.primary" }}>
+        <IconButton aria-label="Theme" size={size} onClick={(e) => setAnchor(e.currentTarget)}
+          sx={{ border: "1px solid", borderColor: "divider", borderRadius: "50%", bgcolor: "background.paper", color: "text.primary" }}>
           {current[2]}
         </IconButton>
       </Tooltip>
