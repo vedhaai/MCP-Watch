@@ -50,8 +50,8 @@ export const actionTone = (a: Action): Tone =>
 
 export function Stat({ n, label, hot }: { n: ReactNode; label: string; hot?: boolean }) {
   return (
-    <Card sx={{ px: 1.75, py: 1.5, borderRadius: 2 }}>
-      <Typography sx={{ fontSize: 26, fontWeight: 600, lineHeight: 1.1, fontVariantNumeric: "tabular-nums", color: hot ? "error.main" : "text.primary" }}>{n}</Typography>
+    <Card sx={{ px: 2.25, py: 2 }}>
+      <Typography sx={{ fontSize: 30, fontWeight: 600, letterSpacing: "-0.02em", lineHeight: 1.1, fontVariantNumeric: "tabular-nums", color: hot ? "error.main" : "text.primary" }}>{n}</Typography>
       <Label sx={{ mt: 0.5, mb: 0, fontSize: 10.5 }}>{label}</Label>
     </Card>
   );

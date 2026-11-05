@@ -10,7 +10,7 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import AddIcon from "@mui/icons-material/Add";
 import { api } from "../api";
-import { Empty, Label, PageHead, Tag } from "../components/ui";
+import { Label, PageHead, Tag } from "../components/ui";
 import { useApp } from "../context";
 import { KINDS, status } from "../lib";
 import type { Project, ProjectKind } from "../types";
@@ -19,16 +19,15 @@ export function ProjectsPage() {
   const { projects } = useApp();
   return (
     <>
-      <PageHead title="Projects" sub={projects ? `${projects.length} project${projects.length === 1 ? "" : "s"}` : "Loading…"}
-        actions={<Button variant="contained" startIcon={<AddIcon />} href="#/new">New project</Button>} />
+      <PageHead title="Projects" sub={projects ? `${projects.length} project${projects.length === 1 ? "" : "s"}` : "Loading…"} />
       {!projects ? <Box sx={{ display: "grid", placeItems: "center", py: 6 }}><CircularProgress size={28} color="inherit" /></Box>
-        : projects.length ? (
-          <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 1.5 }}>
+        : (
+          <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 2 }}>
             {projects.map((p) => {
               const st = status(p);
               return (
-                <Card key={p.id} sx={{ "&:hover": { borderColor: "text.primary" } }}>
-                  <CardActionArea href={`#/p/${p.id}/requests`} sx={{ p: 2 }}>
+                <Card key={p.id} sx={{ "&:hover": { transform: "translateY(-2px)", boxShadow: "0 2px 4px rgba(0,0,0,0.04), 0 12px 32px rgba(0,0,0,0.08)" } }}>
+                  <CardActionArea href={`#/p/${p.id}/requests`} sx={{ p: 2.5 }}>
                     <Typography sx={{ fontWeight: 700, fontSize: 15 }}>{p.name}</Typography>
                     <Typography sx={{ color: "text.secondary", fontSize: 12, mt: 0.5 }}>{KINDS[p.kind][0]}</Typography>
                     <Box sx={{ display: "flex", gap: 0.75, mt: 1.25, flexWrap: "wrap" }}>
@@ -39,14 +38,29 @@ export function ProjectsPage() {
                 </Card>
               );
             })}
+            <AddProjectCard first={!projects.length} />
           </Box>
-        ) : (
-          <Card><Empty>No projects yet. Create one to get a project key and the steps to connect your MCP server.</Empty></Card>
         )}
       <Typography sx={{ fontSize: 12, color: "text.secondary", mt: 2 }}>
         Guards running without a project key write to a local file: <Link href="#/local" color="inherit">local events</Link>.
       </Typography>
     </>
+  );
+}
+
+function AddProjectCard({ first }: { first: boolean }) {
+  return (
+    <ButtonBase href="#/new" sx={{
+      flexDirection: "column", gap: 1, minHeight: 150, p: 2.5, borderRadius: "18px", textAlign: "center",
+      border: "1.5px dashed", borderColor: "divider", bgcolor: "background.paper", color: "text.primary", transition: "border-color .2s ease",
+      "&:hover": { borderColor: "text.secondary" },
+    }}>
+      <Box sx={{ display: "grid", placeItems: "center", width: 44, height: 44, mb: 0.5, borderRadius: "50%", bgcolor: "background.default" }}>
+        <AddIcon />
+      </Box>
+      <Typography sx={{ fontWeight: 700, fontSize: 15 }}>{first ? "Guard your first server" : "Guard another server"}</Typography>
+      <Typography sx={{ fontSize: 13, color: "text.secondary" }}>Node.js, Python, stdio or HTTP</Typography>
+    </ButtonBase>
   );
 }
 
@@ -85,6 +99,7 @@ export function NewProjectPage() {
         </Box>
         <Box sx={{ display: "flex", gap: 1.5, alignItems: "center", mt: 3 }}>
           <Button variant="contained" onClick={create}>Create project</Button>
+          <Button variant="outlined" color="inherit" href="#/">Cancel</Button>
           <Typography sx={{ color: "error.main", fontSize: 13 }}>{error}</Typography>
         </Box>
       </Card>

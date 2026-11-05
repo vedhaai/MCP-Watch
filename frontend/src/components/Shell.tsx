@@ -27,6 +27,7 @@ import { useColorScheme } from "@mui/material/styles";
 import { useApp } from "../context";
 import { THEME_MODES, ThemeToggle } from "./ThemeToggle";
 import { MONO } from "../theme";
+import logo from "../assets/logo.png";
 
 const SIDEBAR = 232;
 export const PROJECT_TABS = [
@@ -85,14 +86,17 @@ export function Shell({ route, projectId, children }: { route: string[]; project
   ];
 
   return (
-    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "minmax(0, 1fr)", md: `${SIDEBAR}px minmax(0, 1fr)` }, minHeight: "100vh" }}>
+    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "minmax(0, 1fr)", md: `${SIDEBAR}px minmax(0, 1fr)` }, minHeight: "100vh", bgcolor: "background.paper" }}>
       <Box component="aside" sx={{ minWidth: 0,
-        bgcolor: "background.paper", borderRight: { md: "1px solid" }, borderBottom: { xs: "1px solid", md: 0 }, borderColor: "divider",
+        bgcolor: "background.paper",
         display: "flex", flexDirection: "column", position: { md: "sticky" }, top: 0, height: { md: "100vh" },
       }}>
-        <Box component="a" href="#/" sx={{ display: "block", px: 2.25, pt: 2.25, pb: 1, color: "inherit", textDecoration: "none" }}>
-          <Typography sx={{ fontSize: 18, fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.2 }}>MCPWatch</Typography>
-          <Typography sx={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em", color: "text.secondary", textTransform: "uppercase" }}>MCP security guard</Typography>
+        <Box component="a" href="#/" sx={{ display: "flex", alignItems: "center", gap: 1.25, px: 2.25, pt: 2.25, pb: 1, color: "inherit", textDecoration: "none" }}>
+          <Box component="img" src={logo} alt="" sx={{ width: 32, height: 32 }} />
+          <Box>
+            <Typography sx={{ fontSize: 18, fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.2 }}>MCPWatch</Typography>
+            <Typography sx={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em", color: "text.secondary", textTransform: "uppercase" }}>MCP security guard</Typography>
+          </Box>
         </Box>
         <List component="nav" sx={{
           flex: 1, overflowY: "auto", px: 1.25, pt: 0, pb: 1.5,
@@ -118,7 +122,7 @@ export function Shell({ route, projectId, children }: { route: string[]; project
       </Box>
 
       <Box sx={{ minWidth: 0, display: "flex", flexDirection: "column" }}>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 2, px: { xs: 2, md: 3.5 }, py: 1.5, borderBottom: "1px solid", borderColor: "divider", bgcolor: "background.default", position: { md: "sticky" }, top: 0, zIndex: 5, flexWrap: { xs: "wrap", sm: "nowrap" } }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 2, px: { xs: 2, md: 3.5 }, py: 1.5, bgcolor: "background.paper", position: { md: "sticky" }, top: 0, zIndex: 5, flexWrap: { xs: "wrap", sm: "nowrap" } }}>
           <ButtonBase onClick={() => setPalette(true)} sx={{
             flex: 1, maxWidth: 520, justifyContent: "flex-start", gap: 1.25, px: 1.5, py: 1, border: "1px solid", borderColor: "divider",
             borderRadius: 2, bgcolor: "background.paper", color: "text.secondary",
@@ -141,7 +145,9 @@ export function Shell({ route, projectId, children }: { route: string[]; project
           <ThemeToggle />
           <Button variant="contained" startIcon={<AddIcon />} href="#/new">New project</Button>
         </Box>
-        <Box component="main" sx={{ px: { xs: 2, md: 4 }, pt: { xs: 2.5, md: 3.5 }, pb: 5, maxWidth: 1440, width: "100%" }}>{children}</Box>
+        <Box sx={{ flex: 1, bgcolor: "background.default", borderRadius: { md: "22px" }, mr: { md: 1.5 }, mb: { md: 1.5 } }}>
+          <Box component="main" sx={{ px: { xs: 2, md: 4 }, pt: { xs: 2.5, md: 4 }, pb: 6, maxWidth: 1440, width: "100%" }}>{children}</Box>
+        </Box>
       </Box>
       <CommandPalette open={palette} onClose={() => setPalette(false)} projectId={projectId} />
     </Box>
