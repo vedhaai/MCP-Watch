@@ -21,6 +21,17 @@ The checks are the same as for Node and Python servers. They run in the MCPWatch
 npm install -g @vedhaai/mcpwatch     # the engine; without it, the package falls back to npx
 ```
 
+> **Not on Maven Central yet.** Until it is (see [Publishing](#publishing)), build it into your local
+> repository first and the dependency above resolves:
+>
+> ```powershell
+> git clone https://github.com/vedhaai/MCP-Watch.git
+> cd MCP-Watch/java
+> mvn install
+> ```
+>
+> The engine it runs *is* published, so a locally built package is fully working, not a stub.
+
 Needs Java 17+. The package brings **no dependencies of its own** beyond SLF4J: the MCP SDK, Reactor and the servlet API are all `provided`, and JSON is handled by the package's own codec, so it can never force a Jackson or Gson version on your application.
 
 ## Official MCP SDK (stdio, HTTP+SSE)
@@ -106,6 +117,42 @@ guarded.setMode("observe");
 
 - **Streamable HTTP through the SDK wrapper.** `McpWatch.guard` covers the transports that give the server one session per connection (stdio, HTTP+SSE). Use the servlet filter for Streamable HTTP.
 - **Server-to-client requests under the filter.** When the guard refuses a request the *server* sent the client (a sampling or elicitation request, MW026 / MW029), the servlet API gives no way to hand the server an answer: the request is dropped and logged, and the server sees it time out. This is the same limit the Python Django middleware has. The SDK wrapper has no such limit — there the refusal is fed back to the server as though the client had answered.
+
+## Publishing
+
+The npm and PyPI packages are published by hand from a maintainer's machine; this one works the same way, with two steps Maven Central adds that the other two registries don't.
+
+**Once, before the first release:**
+
+1. **Verify the namespace.** Central will not accept `ai.vedha` until you prove you control `vedha.ai`. In the [Central Portal](https://central.sonatype.com), add the namespace, then publish the TXT record it gives you on the domain. (npm needed only the `@vedhaai` org; PyPI needed only an unclaimed name.) Verification is usually minutes but can take a day.
+2. **Make a signing key.** Central rejects unsigned artifacts.
+   ```powershell
+   gpg --gen-key
+   gpg --keyserver keyserver.ubuntu.com --send-keys <KEY_ID>
+   ```
+3. **Store the token** from the Portal's *Generate User Token* in `~/.m2/settings.xml`:
+   ```xml
+   <servers>
+     <server>
+       <id>central</id>
+       <username>TOKEN_USERNAME</username>
+       <password>TOKEN_PASSWORD</password>
+     </server>
+   </servers>
+   ```
+
+**Each release:**
+
+```powershell
+cd java
+mvn -Prelease deploy
+```
+
+That runs the tests, builds the main, sources and javadoc jars, signs all three, and uploads them. `mvn deploy` runs the tests on the way, the way `prepublishOnly` does for the npm packages, so a failing build can't ship.
+
+The upload then **waits for you to press Publish** in the Portal, so you can check the staged files first. To skip that and release straight through, set `<autoPublish>true</autoPublish>` in the `release` profile in [pom.xml](pom.xml).
+
+A released version is permanent: Central allows no re-upload or deletion of a version, so bump `<version>` for every release. Everything above lives in the `release` profile, so an ordinary `mvn test` or `mvn install` needs no key and no credentials.
 
 ## Tests
 

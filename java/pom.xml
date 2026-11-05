@@ -22,9 +22,19 @@
     </license>
   </licenses>
 
+  <!-- Maven Central requires a developer entry; npm and PyPI infer it from the account. -->
+  <developers>
+    <developer>
+      <id>vedhaai</id>
+      <name>vedhaai</name>
+      <url>https://github.com/vedhaai</url>
+    </developer>
+  </developers>
+
   <scm>
     <url>https://github.com/vedhaai/MCP-Watch</url>
     <connection>scm:git:https://github.com/vedhaai/MCP-Watch.git</connection>
+    <developerConnection>scm:git:git@github.com:vedhaai/MCP-Watch.git</developerConnection>
   </scm>
 
   <properties>
@@ -101,6 +111,7 @@
         <artifactId>maven-surefire-plugin</artifactId>
         <version>3.5.2</version>
       </plugin>
+      <!-- Central requires a sources jar and a javadoc jar alongside the main one. -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-source-plugin</artifactId>
@@ -112,6 +123,60 @@
           </execution>
         </executions>
       </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-javadoc-plugin</artifactId>
+        <version>3.11.2</version>
+        <executions>
+          <execution>
+            <id>attach-javadocs</id>
+            <goals><goal>jar</goal></goals>
+          </execution>
+        </executions>
+      </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <!--
+      Publishing to Maven Central: `mvn -Prelease deploy`.
+
+      Kept in a profile so an ordinary `mvn test` or `mvn install` needs no GPG key. Unlike npm and
+      PyPI, Central requires every artifact to be signed, and requires the `ai.vedha` namespace to
+      be verified once before the first deploy. See "Publishing" in README.md.
+    -->
+    <profile>
+      <id>release</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-gpg-plugin</artifactId>
+            <version>3.2.7</version>
+            <executions>
+              <execution>
+                <id>sign-artifacts</id>
+                <phase>verify</phase>
+                <goals><goal>sign</goal></goals>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.sonatype.central</groupId>
+            <artifactId>central-publishing-maven-plugin</artifactId>
+            <version>0.7.0</version>
+            <extensions>true</extensions>
+            <configuration>
+              <!-- The server id in ~/.m2/settings.xml holding the Central Portal token. -->
+              <publishingServerId>central</publishingServerId>
+              <!-- Upload and wait, but let a person press publish after checking the staged files,
+                   the way `npm publish` is run by hand here. Set to "automatic" to skip that. -->
+              <autoPublish>false</autoPublish>
+              <waitUntil>validated</waitUntil>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

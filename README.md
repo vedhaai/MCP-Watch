@@ -43,7 +43,7 @@ npm install
 npm run dev
 ```
 
-Without a clone, the dashboard runs with `npx @vedhaai/mcpwatch-dashboard` (once that package is published to npm).
+Without a clone, the dashboard runs with `npx @vedhaai/mcpwatch-dashboard`.
 
 This opens the dashboard at http://127.0.0.1:9100. `npm run dev` builds the engine, the frontend and the backend, then starts. `npm start` starts without building. Use it once you've built and haven't changed the code.
 
