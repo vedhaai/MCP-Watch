@@ -5,7 +5,7 @@ import ListItemText from "@mui/material/ListItemText";
 import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
 import Tooltip from "@mui/material/Tooltip";
-import { useColorScheme } from "@mui/material/styles";
+import { useColorScheme, type SxProps, type Theme } from "@mui/material/styles";
 import CheckIcon from "@mui/icons-material/Check";
 import DarkModeOutlinedIcon from "@mui/icons-material/DarkModeOutlined";
 import LightModeOutlinedIcon from "@mui/icons-material/LightModeOutlined";
@@ -20,7 +20,7 @@ export const THEME_MODES: [ThemeMode, string, React.ReactNode][] = [
 ];
 
 // Light / dark / follow the system. MUI saves the choice in the browser.
-export function ThemeToggle({ size = "medium" }: { size?: "small" | "medium" }) {
+export function ThemeToggle({ size = "medium", sx }: { size?: "small" | "medium"; sx?: SxProps<Theme> }) {
   const { mode, setMode } = useColorScheme();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const current = THEME_MODES.find(([m]) => m === (mode ?? "system")) ?? THEME_MODES[0];
@@ -28,7 +28,7 @@ export function ThemeToggle({ size = "medium" }: { size?: "small" | "medium" }) 
     <>
       <Tooltip title={`Theme: ${current[1]}`}>
         <IconButton aria-label="Theme" size={size} onClick={(e) => setAnchor(e.currentTarget)}
-          sx={{ border: "1px solid", borderColor: "divider", borderRadius: "50%", bgcolor: "background.paper", color: "text.primary" }}>
+          sx={[{ border: "1px solid", borderColor: "divider", borderRadius: "50%", bgcolor: "background.paper", color: "text.primary" }, ...(Array.isArray(sx) ? sx : [sx])]}>
           {current[2]}
         </IconButton>
       </Tooltip>
