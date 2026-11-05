@@ -3,7 +3,6 @@ import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { checkAi } from "./ai-check.js";
 import { CATALOG } from "./catalog.js";
-import { runDashboard } from "./dashboard.js";
 import { runEngineServer } from "./engine-server.js";
 import { DEFAULT_SERVER, type Reporting } from "./headerwatch.js";
 import { runHttpProxy } from "./http-proxy.js";
@@ -13,7 +12,6 @@ import { runStdioProxy } from "./stdio-proxy.js";
 
 const USAGE = `MCPWatch: security guard for MCP
 
-  mcpwatch dashboard [--port 9100] [--data <dir>] run the dashboard (projects, keys, events)
   mcpwatch [options] -- <command> [args...]       guard a stdio MCP server (proxy)
   mcpwatch http --listen 8800 --upstream <url>    guard a Streamable HTTP MCP server (proxy)
   mcpwatch scan [scan options]                     check the MCP servers configured on this machine
@@ -23,6 +21,8 @@ const USAGE = `MCPWatch: security guard for MCP
                                                    JSON lines on stdin/stdout
   mcpwatch rules                                   list the rules
   mcpwatch pins reset                              forget pinned tool definitions
+
+The dashboard is a separate package: npx @vedhaai/mcpwatch-dashboard [--port 9100] [--data <dir>]
 
 Proxy options:
   --project-key <key>              report to a dashboard project (or MCPWATCH_PROJECT_KEY)
@@ -133,7 +133,8 @@ if (sub === "scan") {
     process.exit(2);
   }
 } else if (sub === "dashboard") {
-  runDashboard(Number(opt("port") ?? 9100), opt("data") ?? path.join(HOME, "server"), policy.eventsFile);
+  console.error("The dashboard is now a separate package. Start it with:\n  npx @vedhaai/mcpwatch-dashboard [--port 9100] [--data <dir>]");
+  process.exit(2);
 } else if (sub === "ai") {
   process.exit(await checkAi(policy));
 } else if (sub === "rules") {

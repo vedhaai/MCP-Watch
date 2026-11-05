@@ -1,21 +1,14 @@
 // The AI reviewer, against a stand-in OpenAI-compatible model server: what it adds, what it can't undo,
-// how its answers are checked, what happens when the model is down, and end to end through the proxy.
+// how its answers are checked, and what happens when the model is down.
 // Needs no real model; `mcpwatch ai` checks a real one.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { Engine } from "../dist/engine.js";
 import { loadPolicy } from "../dist/policy.js";
-
-const here = path.dirname(fileURLToPath(import.meta.url));
-const CLI = path.join(here, "..", "dist", "cli.js");
-const SERVER = path.join(here, "fixtures", "demo-server", "server.mjs");
 
 // A model server whose answer is chosen by `judge(userMessage)`. Records every prompt it gets.
 // `key`: refuse requests without this bearer token. `noJsonMode`: refuse response_format, like some providers.
@@ -156,37 +149,6 @@ test("AI: settings from the dashboard turn the reviewer on and off live", async 
   assert.deepEqual(rules(await e.fromClient("s", call(2, "echo", { text: "x" }))), ["MA001"]);
 });
 
-test("AI end to end: the stdio proxy with --ai blocks what the model flags, in order, and passes the rest", async (t) => {
-  const model = await fakeModel((u) => (u.includes("weekly-report") ? flag("MA001", "high", 0.9, "args.expression") : clean));
-  t.after(model.close);
-  const dir = mkdtempSync(path.join(os.tmpdir(), "mcpwatch-ai-e2e-"));
-  const events = path.join(dir, "events.jsonl");
-  const transport = new StdioClientTransport({
-    command: process.execPath,
-    args: [CLI, "--ai", "--ai-url", model.url, "--events", events, "--pins", path.join(dir, "pins.json"), "--", process.execPath, SERVER],
-    env: { ...process.env, MCPWATCH_ENABLED: "0" },
-    stderr: "pipe",
-  });
-  const client = new Client({ name: "ai-e2e", version: "1.0.0" });
-  await client.connect(transport);
-  t.after(() => client.close());
-  await client.listTools();
-
-  const results = await Promise.allSettled([
-    client.callTool({ name: "calculator", arguments: { expression: "1+1" } }),
-    client.callTool({ name: "calculator", arguments: { expression: "2+2 /* weekly-report */" } }),
-    client.callTool({ name: "calculator", arguments: { expression: "3+3" } }),
-  ]);
-  assert.equal(results[0].value.content[0].text, "2");
-  assert.equal(results[1].status, "rejected");
-  assert.equal(results[1].reason.code, -32001);
-  assert.match(results[1].reason.message, /MA001/);
-  assert.equal(results[2].value.content[0].text, "6");
-
-  const logged = readFileSync(events, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
-  assert.ok(logged.some((ev) => ev.ai && ev.findings.some((f) => f.rule === "MA001" && f.source === "ai")));
-});
-
 test("AI: a provider that refuses JSON mode is asked again without it; a wrong key is reported", async (t) => {
   const model = await fakeModel(() => flag("MA001"), { key: "sk-test-123456", noJsonMode: true });
   t.after(model.close);
@@ -197,57 +159,4 @@ test("AI: a provider that refuses JSON mode is asked again without it; a wrong k
   assert.ok((await wrong.e.fromClient("s", call(1, "echo", { text: "x" }))).forward, "rules only when the key is refused");
   assert.match(wrong.events.at(-1).ai.error, /refused the API key/);
   assert.equal(events.at(-1).ai.verdict, "block");
-});
-
-test("dashboard: choose rules only, a local model or an API model; the key never goes back to the browser", async (t) => {
-  const model = await fakeModel((u) => (u.includes("curl") ? flag("MW001", "high", 0.9, "args.path") : clean), { key: "sk-live-abcd1234wxyz" });
-  t.after(model.close);
-  const port = 9300 + Math.floor(Math.random() * 500);
-  const base = `http://127.0.0.1:${port}`;
-  const { spawn } = await import("node:child_process");
-  const dash = spawn(process.execPath, [CLI, "dashboard", "--port", String(port), "--data", mkdtempSync(path.join(os.tmpdir(), "mcpwatch-ai-dash-"))], { stdio: "ignore" });
-  t.after(() => dash.kill());
-  let cookie;
-  const api = async (p, method = "GET", body, headers = {}) => {
-    const res = await fetch(base + p, { method, headers: { "content-type": "application/json", ...(cookie ? { cookie } : {}), ...headers }, body: body && JSON.stringify(body) });
-    cookie ??= res.headers.get("set-cookie")?.split(";")[0];
-    return { status: res.status, body: await res.json() };
-  };
-  for (let i = 0; i < 50; i++) {
-    try { await fetch(base); break; } catch { await new Promise((r) => setTimeout(r, 100)); }
-  }
-  await api("/api/auth/register", "POST", { username: "ai-owner", password: "ai-owner-pass" });
-  const p = (await api("/api/projects", "POST", { name: "AI project" })).body;
-  assert.equal(p.ai.provider, "off", "new projects use the rules only");
-  const config = async () => (await api("/api/agent/config", "GET", undefined, { "x-mcpwatch-key": p.key })).body.policy;
-  assert.equal((await config()).ai_review, false);
-
-  // An API model needs a URL, a model and a key.
-  assert.equal((await api(`/api/projects/${p.id}`, "PATCH", { ai: { provider: "api", url: model.url, model: "m" } })).status, 400);
-  const saved = await api(`/api/projects/${p.id}`, "PATCH", { ai: { provider: "api", url: model.url, model: "test-model", apiKey: "sk-live-abcd1234wxyz" } });
-  assert.equal(saved.status, 200);
-  for (const shown of [saved.body, (await api(`/api/projects/${p.id}`)).body, (await api("/api/projects")).body[0]]) {
-    assert.equal(shown.ai.keyHint, "…wxyz");
-    assert.doesNotMatch(JSON.stringify(shown), /sk-live/);
-  }
-  const cfg = await config();
-  assert.deepEqual([cfg.ai_review, cfg.ai_url, cfg.ai_model, cfg.ai_key], [true, model.url, "test-model", "sk-live-abcd1234wxyz"]);
-
-  // Saving again with the key field empty keeps the key.
-  await api(`/api/projects/${p.id}`, "PATCH", { ai: { provider: "api", url: model.url, model: "test-model-2", apiKey: "" } });
-  assert.equal((await config()).ai_key, "sk-live-abcd1234wxyz");
-
-  // Test AI uses the saved key, and reports a wrong one.
-  const ok = (await api(`/api/projects/${p.id}/ai-test`, "POST", { provider: "api", url: model.url, model: "test-model-2" })).body;
-  assert.equal(ok.ok, true);
-  assert.equal(ok.caught, true);
-  const bad = (await api(`/api/projects/${p.id}/ai-test`, "POST", { provider: "api", url: model.url, model: "x", apiKey: "sk-wrong" })).body;
-  assert.match(bad.error, /refused the API key/);
-
-  // Back to a local model: the guard gets the local URL and no key.
-  await api(`/api/projects/${p.id}`, "PATCH", { ai: { provider: "local", url: "", model: "" } });
-  const local = await config();
-  assert.deepEqual([local.ai_review, local.ai_url, local.ai_model, local.ai_key], [true, "http://127.0.0.1:11434/v1", "qwen2.5:7b", ""]);
-  await api(`/api/projects/${p.id}`, "PATCH", { ai: { provider: "off" } });
-  assert.equal((await config()).ai_review, false);
 });

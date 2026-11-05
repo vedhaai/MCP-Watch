@@ -85,7 +85,7 @@ Every adapter takes the Node middleware's options in snake_case. Options you lea
 | `allowed_origins`, `allowed_hosts`, `require_auth`, `expected_audience` | `MCPWATCH_ALLOWED_ORIGINS`, … | HTTP transport checks (MW030–MW036) |
 | `ai` | `MCPWATCH_AI=1`, … | AI reviewer, e.g. `{"enabled": True, "model": "qwen2.5:7b"}` |
 | `fail_open` | | `True` (default): if the engine can't run, messages pass unchecked and an error is logged. `False`: requests are refused |
-| `command` | `MCPWATCH_ENGINE` | How to start the engine, e.g. `node C:/path/to/MCP-Watch/dist/cli.js`. Default: `mcpwatch` on PATH, else `npx -y @vedhaai/mcpwatch` |
+| `command` | `MCPWATCH_ENGINE` | How to start the engine, e.g. `node C:/path/to/MCP-Watch/engine/dist/cli.js`. Default: `mcpwatch` on PATH, else `npx -y @vedhaai/mcpwatch` |
 
 ## How it works
 
@@ -111,7 +111,7 @@ python -m venv .venv; .venv\Scripts\pip install -e ".[test]"
 .venv\Scripts\python -m pytest
 ```
 
-The tests run the engine from the checkout's `dist/cli.js`. They cover:
+The tests run the engine from the checkout's `engine/dist/cli.js`. They cover:
 - an SDK server over stdio and Streamable HTTP
 - Flask, Django, plain ASGI and WSGI apps
 - options reaching the engine

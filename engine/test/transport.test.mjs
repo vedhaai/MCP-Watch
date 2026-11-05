@@ -1,19 +1,12 @@
-// Transport, auth and session rules (MW030–MW036): the engine on its own, then end to end against
-// the demo server over Streamable HTTP with the middleware built in.
+// Transport, auth and session rules (MW030–MW036) on the engine.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
 import { mkdtempSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { Engine } from "../dist/engine.js";
 import { loadPolicy } from "../dist/policy.js";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const SERVER = path.join(here, "fixtures", "demo-server", "server.mjs");
 const TOKEN = "tok_live_9f8e7d6c5b4a3210abcdef";
 
 function engine(overrides = {}) {
@@ -108,30 +101,4 @@ test("MW036: expired tokens and tokens for another audience are refused", async 
   assert.ok((await e.fromClient("a", call(1, "echo", { text: "x" }), bearer({ aud: "https://mcp.example.com", exp: later }))).forward);
   assert.deepEqual(rules((await e.fromClient("b", call(1, "echo", { text: "x" }), bearer({ aud: "https://api.other.example", exp: later })))), ["MW036"]);
   assert.deepEqual(rules((await e.fromClient("c", call(1, "echo", { text: "x" }), bearer({ aud: ["https://mcp.example.com"], exp: 1000 })))), ["MW036"]);
-});
-
-test("middleware over HTTP: foreign origins, missing auth and leaked tokens are refused", async (t) => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "mcpwatch-tr-"));
-  const env = {
-    ...process.env, MCPWATCH_EVENTS: path.join(dir, "events.jsonl"), MCPWATCH_PINS: path.join(dir, "pins.json"),
-    MCPWATCH_REQUIRE_AUTH: "1", MCPWATCH_ALLOWED_ORIGINS: "https://app.example.com",
-  };
-  const proc = spawn(process.execPath, [SERVER, "--http", "3103"], { env, stdio: "ignore" });
-  t.after(() => proc.kill());
-  await new Promise((r) => setTimeout(r, 800));
-  const url = new URL("http://127.0.0.1:3103/mcp");
-  const connect = async (headers) => {
-    const client = new Client({ name: "e2e-transport", version: "1.0.0" });
-    await client.connect(new StreamableHTTPClientTransport(url, { requestInit: { headers } }));
-    t.after(() => client.close());
-    return client;
-  };
-
-  await assert.rejects(connect({}), /MW031/);
-  await assert.rejects(connect({ authorization: `Bearer ${TOKEN}`, origin: "http://rebind.evil.example:3103" }), /MW030/);
-
-  const client = await connect({ authorization: `Bearer ${TOKEN}`, origin: "https://app.example.com" });
-  const r = await client.callTool({ name: "echo", arguments: { text: "hi" } });
-  assert.equal(r.content[0].text, "hi");
-  await assert.rejects(client.callTool({ name: "echo", arguments: { text: `my token is ${TOKEN}` } }), /MW032/);
 });

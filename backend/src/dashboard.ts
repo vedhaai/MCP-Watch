@@ -6,11 +6,8 @@ import {
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { AiReviewer, CATALOG, DEFAULT_POLICY, type AiSummary, type McpEvent, type Mode } from "@vedhaai/mcpwatch";
 import { Accounts, AuthError, clearedCookie, sessionCookie, tokenFrom } from "./auth.js";
-import { CATALOG } from "./catalog.js";
-import type { AiSummary, McpEvent } from "./events.js";
-import { AiReviewer } from "./ai.js";
-import { DEFAULT_POLICY, type Mode } from "./policy.js";
 
 // The MCPWatch dashboard server. People create projects here and copy a project key into their MCP
 // server (middleware) or proxy; guards then report events and fetch settings through the agent API.
@@ -266,6 +263,27 @@ function send(res: http.ServerResponse, status: number, body: unknown) {
   res.writeHead(status, { "content-type": "application/json" }).end(JSON.stringify(body));
 }
 
+const TYPES: Record<string, string> = {
+  ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
+  ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".woff2": "font/woff2", ".json": "application/json",
+};
+
+// The built web app (web/ -> public/). Files under assets/ have a content hash in their name, so they
+// can be cached for good; anything else that isn't a file gets index.html (routes live in the hash).
+function sendStatic(res: http.ServerResponse, root: string, pathname: string) {
+  let file = path.join(root, decodeURIComponent(pathname));
+  if (!file.startsWith(root + path.sep) || !existsSync(file) || !statSync(file).isFile()) file = path.join(root, "index.html");
+  if (!existsSync(file)) {
+    return res.writeHead(500, { "content-type": "text/plain" }).end("The dashboard web app isn't built. Run: npm run build");
+  }
+  const immutable = file.startsWith(path.join(root, "assets") + path.sep);
+  res.writeHead(200, {
+    "content-type": TYPES[path.extname(file)] ?? "application/octet-stream",
+    "cache-control": immutable ? "public, max-age=31536000, immutable" : "no-cache",
+    "x-content-type-options": "nosniff",
+  }).end(readFileSync(file));
+}
+
 async function readJson(req: http.IncomingMessage): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
   let size = 0;
@@ -363,9 +381,7 @@ function validPatch(body: Record<string, unknown>, current: Project): Partial<Pr
 export function runDashboard(port: number, dataDir: string, localEventsFile: string) {
   const store = new Store(dataDir);
   const accounts = new Accounts(dataDir);
-  const page = path.join(here, "..", "public", "dashboard.html");
-  const libPath = path.resolve(here, "..");
-  const cliPath = path.join(libPath, "dist", "cli.js");
+  const web = path.join(here, "..", "public");
 
   http.createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
@@ -430,7 +446,7 @@ export function runDashboard(port: number, dataDir: string, localEventsFile: str
         if (!user) return send(res, 401, { error: "sign in required" });
 
         if (parts[1] === "meta") {
-          return send(res, 200, { server: `http://127.0.0.1:${port}`, libPath, cliPath, rules: CATALOG });
+          return send(res, 200, { server: `http://127.0.0.1:${port}`, rules: CATALOG });
         }
         if (parts[1] === "local-events") {
           return send(res, 200, tail(localEventsFile, Math.min(Number(url.searchParams.get("limit") ?? 1000), 5000)));
@@ -479,7 +495,7 @@ export function runDashboard(port: number, dataDir: string, localEventsFile: str
       }
 
       if (req.method === "GET" && !url.pathname.startsWith("/api")) {
-        return res.writeHead(200, { "content-type": "text/html; charset=utf-8" }).end(readFileSync(page));
+        return sendStatic(res, web, url.pathname);
       }
       send(res, 404, { error: "not found" });
     } catch (e) {

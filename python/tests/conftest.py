@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 HERE = Path(__file__).resolve().parent
-CLI = HERE.parents[1] / "dist" / "cli.js"
+CLI = HERE.parents[1] / "engine" / "dist" / "cli.js"
 
 sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))

@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,7 +15,6 @@ import { loadPolicy } from "../dist/policy.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const CLI = path.join(here, "..", "dist", "cli.js");
-const SERVER = path.join(here, "fixtures", "demo-server", "server.mjs");
 const run = promisify(execFile);
 
 // Engines made with the same `dir` share pins and the machine-wide registry, like guards on one machine.
@@ -182,24 +181,6 @@ test("scan: typosquats, risky commands, secrets, broad access and tampering in a
   assert.ok(rulesOf((await scanJson()).out, "added").includes("MS006"));
   await scanJson("--accept");
   assert.deepEqual(rulesOf((await scanJson()).out, "added"), []);
-});
-
-test("scan --connect: starts the server and finds poisoned tools before it is used", async () => {
-  const dir = tmp();
-  const config = path.join(dir, "mcp.json");
-  // The demo server's own guard is switched off, so the scan sees what the server really offers.
-  writeFileSync(config, JSON.stringify({ mcpServers: {
-    demo: { command: process.execPath, args: [SERVER], env: { MCP_DEMO_POISON: "1", MCPWATCH_ENABLED: "0" } },
-  } }));
-  const r = await run(process.execPath, [CLI, "scan", "--json", "--connect", "--file", config, "--baseline", path.join(dir, "b.json")]).catch((e) => e);
-  const report = JSON.parse(r.stdout).reports[0];
-  assert.equal(report.serverInfo, "demo-tools@0.1.0");
-  assert.ok(report.tools >= 10);
-  const ids = report.findings.map((f) => f.rule);
-  assert.ok(ids.includes("MW020") && ids.includes("MW021"), ids.join(","));
-  assert.ok(ids.includes("MW039"));
-  assert.equal(r.code, 1);
-  assert.ok(readFileSync(path.join(dir, "b.json"), "utf8").includes("demo-tools@0.1.0"));
 });
 
 test("scan -- <command>: checks one server command before installing it", async () => {

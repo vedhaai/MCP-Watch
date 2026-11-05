@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-SANDBOX = Path(__file__).resolve().parents[2] / "test" / "fixtures" / "demo-server" / "sandbox"
+SANDBOX = Path(__file__).resolve().parent / "sandbox"
 
 TOOLS = [
     {"name": "calculator", "description": "Evaluate a simple arithmetic expression.",

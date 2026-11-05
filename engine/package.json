@@ -1,0 +1,56 @@
+{
+  "name": "@vedhaai/mcpwatch",
+  "version": "0.2.0",
+  "description": "Security guard for MCP servers: middleware or proxy that scans every JSON-RPC message",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "security",
+    "guard",
+    "proxy",
+    "prompt-injection",
+    "tool-poisoning"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vedhaai/MCP-Watch.git",
+    "directory": "engine"
+  },
+  "homepage": "https://github.com/vedhaai/MCP-Watch#readme",
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "mcpwatch": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "pretest": "tsc",
+    "test": "node --test test/*.test.mjs",
+    "prepublishOnly": "npm test"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "cross-spawn": "^7.0.6"
+  },
+  "devDependencies": {
+    "@types/cross-spawn": "^6.0.6",
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2"
+  }
+}

@@ -3,7 +3,7 @@
     python demo_server.py            # stdio
     python demo_server.py --http 3002  # Streamable HTTP on http://127.0.0.1:3002/mcp
 
-File tools are confined to the Node demo server's sandbox; run_command is simulated.
+File tools are confined to tests/sandbox; run_command is simulated.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ except ImportError:
 
 from mcpwatch import mcpwatch
 
-SANDBOX = Path(__file__).resolve().parents[2] / "test" / "fixtures" / "demo-server" / "sandbox"
+SANDBOX = Path(__file__).resolve().parent / "sandbox"
 
 server = Server("py-demo-tools")
 
