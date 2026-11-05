@@ -1,5 +1,7 @@
 # MCPWatch for Java
 
+[![Maven Central](https://img.shields.io/maven-central/v/ai.vedha/mcpwatch.svg)](https://central.sonatype.com/artifact/ai.vedha/mcpwatch)
+
 The [MCPWatch](https://github.com/vedhaai/MCP-Watch) security guard for MCP servers written in Java. It checks every JSON-RPC message between any MCP client and your server, in both directions. It works with:
 - the official [MCP Java SDK](https://github.com/modelcontextprotocol/java-sdk) (stdio and HTTP+SSE)
 - Spring Boot (MVC), Quarkus, Jetty, Tomcat — any servlet application, including Spring AI's MCP server
@@ -21,16 +23,11 @@ The checks are the same as for Node and Python servers. They run in the MCPWatch
 npm install -g @vedhaai/mcpwatch     # the engine; without it, the package falls back to npx
 ```
 
-> **Not on Maven Central yet.** Until it is (see [Publishing](#publishing)), build it into your local
-> repository first and the dependency above resolves:
->
-> ```powershell
-> git clone https://github.com/vedhaai/MCP-Watch.git
-> cd MCP-Watch/java
-> mvn install
-> ```
->
-> The engine it runs *is* published, so a locally built package is fully working, not a stub.
+Gradle:
+
+```kotlin
+implementation("ai.vedha:mcpwatch:0.1.0")
+```
 
 Needs Java 17+. The package brings **no dependencies of its own** beyond SLF4J: the MCP SDK, Reactor and the servlet API are all `provided`, and JSON is handled by the package's own codec, so it can never force a Jackson or Gson version on your application.
 
@@ -120,17 +117,19 @@ guarded.setMode("observe");
 
 ## Publishing
 
-The npm and PyPI packages are published by hand from a maintainer's machine; this one works the same way, with two steps Maven Central adds that the other two registries don't.
+The npm and PyPI packages are published by hand from a maintainer's machine; this one works the same way, with two things Maven Central needs that the other two registries don't: every artifact signed, and the namespace verified once.
 
-**Once, before the first release:**
+**The one-time setup is done.** `ai.vedha` is a verified namespace, so anything published under it from now on needs no further verification. Kept here for a new machine or a new maintainer:
 
-1. **Verify the namespace.** Central will not accept `ai.vedha` until you prove you control `vedha.ai`. In the [Central Portal](https://central.sonatype.com), add the namespace, then publish the TXT record it gives you on the domain. (npm needed only the `@vedhaai` org; PyPI needed only an unclaimed name.) Verification is usually minutes but can take a day.
-2. **Make a signing key.** Central rejects unsigned artifacts.
+1. **The namespace.** Central would not accept `ai.vedha` until control of `vedha.ai` was proven, by publishing a TXT record on the domain apex holding the key the [Central Portal](https://central.sonatype.com) issues. Add the record *before* pressing Verify: confirming first makes Central cache the failed lookup, which delays verification until that cache expires.
+2. **A signing key.** Use **RSA** (4096). Central's examples are all RSA and EdDSA keys have been reported to fail validation with nothing but a generic "Signature verification failed". The key must have no *signing subkey* — Central verifies against the primary key only.
    ```powershell
-   gpg --gen-key
+   gpg --full-generate-key                     # (1) RSA and RSA, 4096 bits, 3y or longer
    gpg --keyserver keyserver.ubuntu.com --send-keys <KEY_ID>
+   gpg --keyserver keys.openpgp.org   --send-keys <KEY_ID>
    ```
-3. **Store the token** from the Portal's *Generate User Token* in `~/.m2/settings.xml`:
+   Publishing the public key is not optional: Central fetches it to check the signatures, and a failed lookup is cached for about a day.
+3. **`~/.m2/settings.xml`** — the Portal token under the server id `central` (from *Generate User Token*; not your login), and the key id, so the gpg plugin doesn't sign with some other default key:
    ```xml
    <servers>
      <server>
@@ -139,7 +138,14 @@ The npm and PyPI packages are published by hand from a maintainer's machine; thi
        <password>TOKEN_PASSWORD</password>
      </server>
    </servers>
+   <profiles>
+     <profile>
+       <id>release</id>
+       <properties><gpg.keyname>YOUR_RSA_KEY_ID</gpg.keyname></properties>
+     </profile>
+   </profiles>
    ```
+   Leave the passphrase out and let `gpg-agent` prompt; `<gpg.passphrase>` would sit in plaintext and `-Dgpg.passphrase=` shows up in the process list. Add `export GPG_TTY=$(tty)` to your shell profile, or signing fails with `Inappropriate ioctl for device`.
 
 **Each release:**
 
@@ -148,11 +154,23 @@ cd java
 mvn -Prelease deploy
 ```
 
-That runs the tests, builds the main, sources and javadoc jars, signs all three, and uploads them. `mvn deploy` runs the tests on the way, the way `prepublishOnly` does for the npm packages, so a failing build can't ship.
+That runs the tests, builds the main, sources and javadoc jars, signs all four files and uploads them. `mvn deploy` runs the tests on the way, the way `prepublishOnly` does for the npm packages, so a failing build can't ship.
 
-The upload then **waits for you to press Publish** in the Portal, so you can check the staged files first. To skip that and release straight through, set `<autoPublish>true</autoPublish>` in the `release` profile in [pom.xml](pom.xml).
+The upload then **waits for you to press Publish** in the Portal, so you can check the staged files first. To skip that, set `<autoPublish>true</autoPublish>` in the `release` profile in [pom.xml](pom.xml).
 
-A released version is permanent: Central allows no re-upload or deletion of a version, so bump `<version>` for every release. Everything above lives in the `release` profile, so an ordinary `mvn test` or `mvn install` needs no key and no credentials.
+Three things worth knowing:
+
+- **A released version is permanent.** Central allows no re-upload or deletion, so bump `<version>` for every release. A deployment that *fails validation* costs nothing, though — it never publishes, and the same version can be redeployed.
+- **Keep `central-publishing-maven-plugin` current.** The Central API gains fields, and older plugin builds reject what they haven't seen: 0.7.0 fails every deploy with `Unrecognized field "warnings"` while reading the status response, *after* the upload has already succeeded.
+- **Watch the signing key's expiry.** Once it expires you cannot publish until you extend it and re-upload it to the keyservers:
+  ```powershell
+  gpg --quick-set-expire <FINGERPRINT> 3y '*'
+  gpg --keyserver keyserver.ubuntu.com --send-keys <KEY_ID>
+  ```
+
+After publishing, the artifact reaches `repo1.maven.org` in 10–20 minutes and is usable immediately. The search indexes lag well behind that: `search.maven.org` by a few hours, and the third-party `mvnrepository.com` by days. A new release missing from those is normal and not a sign anything went wrong.
+
+Everything above lives in the `release` profile, so an ordinary `mvn test` or `mvn install` needs no key and no credentials.
 
 ## Tests
 
