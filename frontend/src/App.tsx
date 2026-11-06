@@ -76,8 +76,10 @@ function SignedIn({ user, onSignOut }: { user: User; onSignOut: () => void }) {
   if (failed) return <Unreachable what="load the dashboard" message={failed} />;
   if (!state) return <Loading />;
 
+  // #/local is the host's own captured traffic. Someone who isn't the dashboard's owner gets the
+  // projects page instead of a view that would only poll a 403.
   const page = route[0] === "new" ? <NewProjectPage />
-    : route[0] === "local" ? <LocalPage />
+    : route[0] === "local" && user.owner ? <LocalPage />
     : route[0] === "p" && route[1] ? <ProjectPage key={route[1]} id={route[1]} tab={route[2] ?? "requests"} />
     : <ProjectsPage />;
 

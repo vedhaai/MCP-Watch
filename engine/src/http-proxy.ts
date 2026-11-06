@@ -21,7 +21,7 @@ export function runHttpProxy(policy: Policy, listen: number, upstream: URL, repo
     try {
       return from === "client" ? await engine.fromClient(sessionId, msg, info) : await engine.fromServer(sessionId, msg, strict);
     } catch (e) {
-      console.error(`[mcpwatch] guard error: ${(e as Error).message}`);
+      engine.noteFailure(e);
       if (policy.failOpen || msg.id === undefined || msg.method === undefined) return { forward: msg, reply: null };
       return { forward: null, reply: { jsonrpc: "2.0", id: msg.id, error: { code: BLOCKED, message: "MCPWatch failed closed" } } };
     }

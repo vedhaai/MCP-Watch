@@ -1,4 +1,5 @@
-import { Controller, Get, Query, Response, Route, Security, Tags } from "@tsoa/runtime";
+import { Controller, Get, Query, Request, Response, Route, Security, Tags } from "@tsoa/runtime";
+import type { SessionRequest } from "../http/authentication.js";
 import type { Meta } from "../models/api.js";
 import type { Services } from "../services/index.js";
 import type { MetaService } from "../services/meta-service.js";
@@ -21,9 +22,10 @@ export class MetaController extends Controller {
     return this.meta.meta();
   }
 
-  /** Events from guards without a project key. */
+  /** Events from guards without a project key. Only for the account that set up this dashboard. */
   @Get("local-events")
-  public localEvents(@Query() limit?: number): unknown[] {
-    return this.meta.localEvents(limit);
+  @Response(403, "Local events belong to the account that set up this dashboard")
+  public localEvents(@Request() req: SessionRequest, @Query() limit?: number): unknown[] {
+    return this.meta.localEvents(req.user, limit);
   }
 }

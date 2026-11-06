@@ -1,4 +1,5 @@
 import { EventRepository } from "../data/event-repository.js";
+import { secureFile, secureTree } from "../data/json-files.js";
 import { ProjectRepository } from "../data/project-repository.js";
 import { SessionRepository } from "../data/session-repository.js";
 import { UserRepository } from "../data/user-repository.js";
@@ -25,14 +26,20 @@ export interface DashboardConfig {
 
 // Wires the data layer into the services. One set per running dashboard.
 export function createServices({ port, dataDir, localEventsFile }: DashboardConfig): Services {
+  // Before anything is read or written: create the data dir private, and tighten what an older
+  // version left world-readable. The local events file sits outside the data dir and is shared with
+  // the guards, which run as the same user.
+  secureTree(dataDir);
+  secureFile(localEventsFile);
   const projectRepo = new ProjectRepository(dataDir);
   const eventRepo = new EventRepository(dataDir, localEventsFile);
+  const userRepo = new UserRepository(dataDir);
   const ai = new AiService();
   const projects = new ProjectService(projectRepo, eventRepo, ai);
   return {
-    auth: new AuthService(new UserRepository(dataDir), new SessionRepository(dataDir), projects),
+    auth: new AuthService(userRepo, new SessionRepository(dataDir), projects),
     projects,
     agent: new AgentService(projectRepo, eventRepo, ai),
-    meta: new MetaService(`http://127.0.0.1:${port}`, eventRepo),
+    meta: new MetaService(`http://127.0.0.1:${port}`, eventRepo, userRepo),
   };
 }

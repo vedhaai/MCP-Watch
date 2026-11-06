@@ -3,7 +3,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtempSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -31,14 +32,19 @@ async function api(p, opts = {}) {
   return { status: res.status, body: await res.json(), cookie: setCookie ? setCookie.split(";")[0] : undefined };
 }
 
-function startDashboard(t) {
+function startDashboard(t, env = {}, eventsFile) {
   PORT += 1; // one port per test, so a dashboard still shutting down never collides
   BASE = `http://127.0.0.1:${PORT}`;
   const data = mkdtempSync(path.join(os.tmpdir(), "mcpwatch-dash-"));
-  const dash = spawn(process.execPath, [CLI, "--port", String(PORT), "--data", data], { stdio: "ignore" });
+  const args = [CLI, "--port", String(PORT), "--data", data];
+  if (eventsFile) args.push("--events", eventsFile);
+  const dash = spawn(process.execPath, args, { stdio: "ignore", env: { ...process.env, ...env } });
   t.after(() => dash.kill());
   return data;
 }
+
+// Windows has no group/other permission bits: chmod there only toggles read-only.
+const NO_POSIX_MODES = process.platform === "win32" && "POSIX file modes do not exist on Windows";
 
 test("dashboard: accounts, sessions and per-user projects", async (t) => {
   startDashboard(t);
@@ -54,7 +60,9 @@ test("dashboard: accounts, sessions and per-user projects", async (t) => {
   const alice = await api("/api/auth/register", { method: "POST", body: { username: "alice", password: "alice-pass-1" } });
   assert.equal(alice.status, 200);
   assert.match(alice.cookie, /^mw_session=/);
-  assert.equal((await api("/api/auth/register", { method: "POST", body: { username: "ALICE", password: "another-pass" } })).status, 400);
+  // Usernames are unique regardless of case. Checked as a signed-in caller, because an anonymous one
+  // is now turned away before the dashboard will say whether a name is taken.
+  assert.equal((await api("/api/auth/register", { method: "POST", cookie: alice.cookie, body: { username: "ALICE", password: "another-pass" } })).status, 400);
   assert.equal((await api("/api/auth/me", { cookie: alice.cookie })).body.user.username, "alice");
 
   // Writes must be JSON (blocks cross-site form posts).
@@ -64,7 +72,12 @@ test("dashboard: accounts, sessions and per-user projects", async (t) => {
   // Each user sees only their own projects; someone else's project looks missing.
   const a1 = (await api("/api/projects", { method: "POST", cookie: alice.cookie, body: { name: "Alice server", kind: "middleware" } })).body;
   await api("/api/projects", { method: "POST", cookie: alice.cookie, body: { name: "Alice second", kind: "proxy-stdio" } });
-  const bob = await api("/api/auth/register", { method: "POST", body: { username: "bob", password: "bob-pass-12" } });
+  // Alice makes bob's account; it doesn't touch her session, so bob signs in himself.
+  const made = await api("/api/auth/register", { method: "POST", cookie: alice.cookie, body: { username: "bob", password: "bob-pass-12" } });
+  assert.equal(made.status, 200);
+  assert.equal(made.cookie, undefined, "creating an account for someone else must not reassign your own session");
+  assert.equal((await api("/api/auth/me", { cookie: alice.cookie })).body.user.username, "alice");
+  const bob = await api("/api/auth/login", { method: "POST", body: { username: "bob", password: "bob-pass-12" } });
   assert.equal((await api("/api/projects", { cookie: alice.cookie })).body.length, 2);
   assert.equal((await api("/api/projects", { cookie: bob.cookie })).body.length, 0);
   assert.equal((await api(`/api/projects/${a1.id}`, { cookie: bob.cookie })).status, 404);
@@ -115,8 +128,284 @@ test("dashboard: create a project, configure it for its guards, and revoke its k
   assert.equal((await api("/api/agent/config", { headers: { "x-mcpwatch-key": p.key } })).status, 200);
   assert.ok((await api(`/api/projects/${p.id}`, { cookie })).body.lastSeenAt, "project shows as connected");
 
+  // A guard whose checks fail says so; the project shows the issue. A report of no failures changes nothing.
+  assert.equal((await api(`/api/projects/${p.id}`, { cookie })).body.engineIssue ?? null, null);
+  assert.equal((await api("/api/agent/health", { headers: { "x-mcpwatch-key": "mw_wrong" }, method: "POST", body: { errors: 1 } })).status, 401);
+  await api("/api/agent/health", { headers: { "x-mcpwatch-key": p.key }, method: "POST", body: { errors: 0 } });
+  assert.equal((await api(`/api/projects/${p.id}`, { cookie })).body.engineIssue ?? null, null);
+  assert.equal((await api("/api/agent/health", { headers: { "x-mcpwatch-key": p.key }, method: "POST", body: { errors: 3, fail_open: false } })).status, 200);
+  const issue = (await api(`/api/projects/${p.id}`, { cookie })).body.engineIssue;
+  assert.equal(issue.errors, 3);
+  assert.equal(issue.failOpen, false);
+  assert.ok(Date.now() - Date.parse(issue.at) < 10_000, "stamped with the dashboard's clock");
+
   // 3. Deleting a project revokes its key.
   await api(`/api/projects/${p.id}`, { cookie, method: "DELETE" });
   assert.equal((await api("/api/agent/config", { headers: { "x-mcpwatch-key": p.key } })).status, 401);
   assert.equal((await api("/api/projects", { cookie })).body.length, 0);
+});
+
+test("dashboard: accounts, keys and events are never readable by other users", { skip: NO_POSIX_MODES }, async (t) => {
+  // Password hashes, live session tokens and project keys all live in the data dir, so nothing in it
+  // may be group- or world-readable.
+  const data = startDashboard(t);
+  await ready();
+
+  const { cookie } = await api("/api/auth/register", { method: "POST", body: { username: "dana", password: "dana-pass-1" } });
+  const { body: p } = await api("/api/projects", { cookie, method: "POST", body: { name: "perms" } });
+  await api("/api/agent/events", { headers: { "x-mcpwatch-key": p.key }, method: "POST", body: { events: [{ mcp: { method: "tools/call", findings: [] } }] } });
+
+  for (const [file, mode] of modes(data)) {
+    assert.equal(mode & 0o077, 0, `${path.relative(data, file) || "."} is readable by other users (mode ${mode.toString(8)})`);
+  }
+  // The files that must exist by now, so the walk above can't pass by finding nothing.
+  const found = modes(data).map(([f]) => path.basename(f));
+  for (const name of ["users.json", "sessions.json", "projects.json", `${p.id}.jsonl`]) assert.ok(found.includes(name), `${name} was written`);
+});
+
+test("dashboard: a data dir left world-readable by an older version is tightened at startup", { skip: NO_POSIX_MODES }, async (t) => {
+  // mode on writeFileSync/mkdirSync only applies at creation, so an upgrade has to chmod what it finds.
+  const data = mkdtempSync(path.join(os.tmpdir(), "mcpwatch-legacy-"));
+  mkdirSync(path.join(data, "events"), { recursive: true });
+  writeFileSync(path.join(data, "users.json"), "[]");
+  writeFileSync(path.join(data, "events", "old.jsonl"), "{}\n");
+  const stale = path.join(data, "stale-events.jsonl");
+  writeFileSync(stale, "{}\n");
+  for (const p of [data, path.join(data, "events")]) chmodSync(p, 0o755);
+  for (const p of [path.join(data, "users.json"), path.join(data, "events", "old.jsonl"), stale]) chmodSync(p, 0o644);
+
+  PORT += 1;
+  BASE = `http://127.0.0.1:${PORT}`;
+  const dash = spawn(process.execPath, [CLI, "--port", String(PORT), "--data", data, "--events", stale], { stdio: "ignore" });
+  t.after(() => dash.kill());
+  await ready();
+
+  for (const [file, mode] of modes(data)) {
+    assert.equal(mode & 0o077, 0, `${path.relative(data, file) || "."} was left readable by other users`);
+  }
+  // The local events file sits outside the data dir and is shared with the guards.
+  assert.equal(statSync(stale).mode & 0o077, 0, "the local events file was left readable by other users");
+  // Tightening must not have eaten the contents.
+  assert.equal(readFileSync(path.join(data, "events", "old.jsonl"), "utf8"), "{}\n");
+});
+
+// Every path under `dir`, including `dir` itself, with its permission bits.
+function modes(dir) {
+  const out = [[dir, statSync(dir).mode]];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...modes(p));
+    else out.push([p, statSync(p).mode]);
+  }
+  return out;
+}
+
+test("dashboard: a user cannot aim the AI settings at the dashboard's own network", async (t) => {
+  // Both the Test AI button and saving settings fetch (or hand a guard) the URL, so both check it.
+  startDashboard(t);
+  await ready();
+  const { cookie } = await api("/api/auth/register", { method: "POST", body: { username: "erin", password: "erin-pass-1" } });
+  const { body: p } = await api("/api/projects", { cookie, method: "POST", body: { name: "ssrf" } });
+
+  const internal = [
+    ["http://127.0.0.1:9299/v1", /local network/],
+    ["http://localhost:9299/v1", /local network/],
+    ["http://10.0.0.5/v1", /local network/],
+    ["http://169.254.169.254/latest/meta-data", /reserved address/],
+  ];
+  for (const [url, message] of internal) {
+    const ai = { provider: "api", url, model: "m", apiKey: "sk-test" };
+    const tested = await api(`/api/projects/${p.id}/ai-test`, { cookie, method: "POST", body: ai });
+    assert.equal(tested.status, 400, `Test AI should refuse ${url}`);
+    assert.match(tested.body.error, message);
+    const saved = await api(`/api/projects/${p.id}`, { cookie, method: "PATCH", body: { ai } });
+    assert.equal(saved.status, 400, `saving should refuse ${url}`);
+    assert.match(saved.body.error, message);
+  }
+  // Nothing was stored, so no guard is handed a blocked address.
+  assert.equal((await api(`/api/projects/${p.id}`, { cookie })).body.ai.provider, "off");
+
+  // A local model is the one case that may reach this machine — but not the metadata service.
+  assert.equal((await api(`/api/projects/${p.id}`, { cookie, method: "PATCH", body: { ai: { provider: "local", url: "http://127.0.0.1:11434/v1", model: "qwen2.5:7b" } } })).status, 200);
+  const metadata = await api(`/api/projects/${p.id}`, { cookie, method: "PATCH", body: { ai: { provider: "local", url: "http://169.254.169.254/v1", model: "m" } } });
+  assert.equal(metadata.status, 400);
+  assert.match(metadata.body.error, /reserved address/);
+
+  // A real provider still saves and reaches the guards.
+  const ok = await api(`/api/projects/${p.id}`, { cookie, method: "PATCH", body: { ai: { provider: "api", url: "https://api.openai.com/v1", model: "gpt-4o-mini", apiKey: "sk-test" } } });
+  assert.equal(ok.status, 200);
+  assert.equal((await api("/api/agent/config", { headers: { "x-mcpwatch-key": p.key } })).body.policy.ai_url, "https://api.openai.com/v1");
+});
+
+test("dashboard: only the first account is open; after that one is made by someone signed in", async (t) => {
+  startDashboard(t);
+  await ready();
+
+  // Nobody yet, so the first account can sign itself up.
+  const owner = await api("/api/auth/register", { method: "POST", body: { username: "owner", password: "owner-pass-1" } });
+  assert.equal(owner.status, 200);
+  assert.match(owner.cookie, /^mw_session=/);
+
+  // From here an anonymous request is turned away, and before the dashboard says whether a name is
+  // taken — otherwise it would answer that question for anyone who asks.
+  const uninvited = await api("/api/auth/register", { method: "POST", body: { username: "attacker", password: "attacker-p1" } });
+  assert.equal(uninvited.status, 403);
+  assert.match(uninvited.body.error, /already has an account/);
+  assert.equal((await api("/api/auth/register", { method: "POST", body: { username: "owner", password: "owner-pass-1" } })).status, 403,
+    "an existing username must not be distinguishable from a free one");
+  assert.equal((await api("/api/auth/login", { method: "POST", body: { username: "attacker", password: "attacker-p1" } })).status, 401,
+    "the refused account was not created");
+
+  // A signed-in user can still add one.
+  assert.equal((await api("/api/auth/register", { method: "POST", cookie: owner.cookie, body: { username: "colleague", password: "colleague-1" } })).status, 200);
+  assert.equal((await api("/api/auth/login", { method: "POST", body: { username: "colleague", password: "colleague-1" } })).status, 200);
+
+  // A password long enough to be a lever on the hash is refused rather than hashed.
+  assert.equal((await api("/api/auth/register", { method: "POST", cookie: owner.cookie, body: { username: "big", password: "p".repeat(5000) } })).status, 400);
+});
+
+test("dashboard: open registration can be turned back on by whoever starts the dashboard", async (t) => {
+  startDashboard(t, { MCPWATCH_OPEN_REGISTRATION: "1" });
+  await ready();
+  assert.equal((await api("/api/auth/register", { method: "POST", body: { username: "first", password: "first-pass-1" } })).status, 200);
+  const second = await api("/api/auth/register", { method: "POST", body: { username: "second", password: "second-pass" } });
+  assert.equal(second.status, 200, "the opt-in restores the old behaviour for a shared dashboard");
+  assert.match(second.cookie, /^mw_session=/);
+});
+
+test("dashboard: signing in is capped per caller, so password hashing can't be used as a lever", async (t) => {
+  startDashboard(t);
+  await ready();
+
+  // Distinct usernames, so the per-username lockout isn't what answers: this is the per-caller cap.
+  const codes = [];
+  for (let i = 0; i < 24; i++) {
+    codes.push((await api("/api/auth/login", { method: "POST", body: { username: `nobody${i}`, password: "whatever-123" } })).status);
+  }
+  assert.ok(codes.slice(0, 20).every((c) => c === 401), `the first 20 are answered normally, got ${JSON.stringify(codes)}`);
+  assert.ok(codes.slice(20).every((c) => c === 429), `everything past the cap is refused, got ${codes.slice(20)}`);
+
+  // Reading who is signed in is cheap and stays available.
+  assert.equal((await api("/api/auth/me")).status, 200);
+});
+
+test("dashboard: local events belong to the account that set the dashboard up", async (t) => {
+  // Guards without a project key write to a shared file, so nothing in these events says whose they
+  // are. They are the host's own captured traffic, and only its owner sees them.
+  const events = path.join(mkdtempSync(path.join(os.tmpdir(), "mcpwatch-local-")), "events.jsonl");
+  writeFileSync(events, JSON.stringify({
+    time: "2026-11-06T00:00:00Z", method: "tools/call", findings: [], snippet: "OWNER-ONLY-DATA",
+    client: "c", server: "s", session: "x", direction: "client->server", mode: "observe", score: 0,
+  }) + "\n");
+  startDashboard(t, {}, events);
+  await ready();
+
+  const owner = await api("/api/auth/register", { method: "POST", body: { username: "owner", password: "owner-pass-1" } });
+  await api("/api/auth/register", { method: "POST", cookie: owner.cookie, body: { username: "colleague", password: "colleague-1" } });
+  const other = await api("/api/auth/login", { method: "POST", body: { username: "colleague", password: "colleague-1" } });
+
+  // The browser is told which account it is, so the page is only offered to the one that can load it.
+  assert.equal((await api("/api/auth/me", { cookie: owner.cookie })).body.user.owner, true);
+  assert.equal((await api("/api/auth/me", { cookie: other.cookie })).body.user.owner, false);
+
+  const mine = await api("/api/local-events", { cookie: owner.cookie });
+  assert.equal(mine.status, 200);
+  assert.equal(mine.body[0].snippet, "OWNER-ONLY-DATA");
+
+  const theirs = await api("/api/local-events", { cookie: other.cookie });
+  assert.equal(theirs.status, 403, "another account must not read the host's captured traffic");
+  assert.match(theirs.body.error, /set up this dashboard/);
+  assert.equal(JSON.stringify(theirs.body).includes("OWNER-ONLY-DATA"), false, "nothing of the traffic leaks in the refusal");
+
+  assert.equal((await api("/api/local-events")).status, 401);
+
+  // The rest of the dashboard is unchanged for the second account.
+  assert.equal((await api("/api/meta", { cookie: other.cookie })).status, 200);
+  assert.equal((await api("/api/projects", { method: "POST", cookie: other.cookie, body: { name: "theirs" } })).status, 201);
+});
+
+test("dashboard: a guard cannot store an event the dashboard chokes on", async (t) => {
+  // Findings used to be stored exactly as the guard sent them, and the Requests view reads f.rule on
+  // every render. One null in the array broke the page for good, including the button to clear it.
+  startDashboard(t);
+  await ready();
+  const { cookie } = await api("/api/auth/register", { method: "POST", body: { username: "owner", password: "owner-pass-1" } });
+  const { body: p } = await api("/api/projects", { cookie, method: "POST", body: { name: "junk" } });
+
+  const sent = await api("/api/agent/events", {
+    headers: { "x-mcpwatch-key": p.key }, method: "POST",
+    body: { events: [{ mcp: {
+      method: "tools/call", time: "2026-11-06T00:00:00Z", score: 1,
+      findings: [null, "not-an-object", ["a"], 7, { severity: "bogus" }, { rule: "MW001", severity: "high", points: 5, detail: "real finding" }],
+      action: { evil: 1 }, enforceAction: [], clientRule: "nonsense", id: { x: 1 }, direction: "sideways",
+      server: "s".repeat(5000), snippet: "x".repeat(5000),
+    } }] },
+  });
+  assert.equal(sent.body.stored, 1);
+
+  const [e] = (await api(`/api/projects/${p.id}/events`, { cookie })).body;
+
+  // Nothing that isn't a finding survives, and the real detection is untouched.
+  assert.equal(e.findings.length, 2, `only the two object findings are kept, got ${JSON.stringify(e.findings)}`);
+  assert.ok(e.findings.every((f) => f && typeof f === "object" && typeof f.rule === "string" && typeof f.detail === "string"));
+  assert.ok(e.findings.every((f) => ["high", "medium", "low"].includes(f.severity)));
+  assert.deepEqual(e.findings[1], { rule: "MW001", severity: "high", points: 5, detail: "real finding" });
+
+  // Fields the page switches on are one of the values it knows, never a guard's own object.
+  assert.ok(["allow", "block", "throttle", "redact", "strip"].includes(e.action));
+  assert.ok(["allow", "block", "throttle", "redact", "strip"].includes(e.enforceAction));
+  assert.ok(["client->server", "server->client", "local"].includes(e.direction));
+  assert.equal(e.clientRule, undefined, "a clientRule that isn't block or allow is dropped");
+  assert.equal(e.id, undefined, "an id that isn't a string or number is dropped");
+  assert.ok(e.server.length <= 300 && e.snippet.length <= 600, "long strings are cut to their limit");
+
+  // The array itself is capped, so one batch can't bury the page in findings.
+  await api("/api/agent/events", {
+    headers: { "x-mcpwatch-key": p.key }, method: "POST",
+    body: { events: [{ mcp: { method: "tools/call", findings: Array.from({ length: 500 }, () => ({ rule: "MW002", severity: "low", points: 1, detail: "d" })) } }] },
+  });
+  const latest = (await api(`/api/projects/${p.id}/events`, { cookie })).body.at(-1);
+  assert.equal(latest.findings.length, 30);
+});
+
+test("dashboard: every response carries its security headers, and the CSP fits the page it serves", async (t) => {
+  startDashboard(t);
+  await ready();
+
+  // The API answers carry them too, so a JSON response can't be framed or sniffed into something else.
+  const json = await fetch(`${BASE}/api/auth/me`);
+  assert.equal(json.headers.get("x-content-type-options"), "nosniff");
+  assert.equal(json.headers.get("x-frame-options"), "DENY");
+  assert.match(json.headers.get("content-security-policy"), /frame-ancestors 'none'/);
+
+  const res = await fetch(`${BASE}/`);
+  const csp = res.headers.get("content-security-policy");
+  assert.ok(csp, "the page is served with a CSP");
+  assert.match(csp, /frame-ancestors 'none'/, "the dashboard cannot be framed");
+  assert.match(csp, /object-src 'none'/);
+  assert.match(csp, /base-uri 'none'/);
+
+  // script-src must not fall back to 'unsafe-inline': that would let an injected script run, which is
+  // the whole point of having a CSP here.
+  const scriptSrc = csp.split(";").map((d) => d.trim()).find((d) => d.startsWith("script-src"));
+  assert.ok(scriptSrc, "script-src is set explicitly rather than inherited");
+  assert.equal(scriptSrc.includes("'unsafe-inline'"), false, `script-src must stay strict, got: ${scriptSrc}`);
+
+  if (res.status !== 200) return; // the web app isn't built in this checkout; headers above still hold
+
+  // Every inline script in the page it actually serves has to be covered by a hash, or the browser
+  // blocks it and the dashboard loads broken.
+  const html = await res.text();
+  const inline = [...html.matchAll(/<script(?![^>]*\ssrc=)[^>]*>([\s\S]*?)<\/script>/gi)].map((m) => m[1]);
+  assert.ok(inline.length > 0, "the page has the inline theme script this guards");
+  for (const body of inline) {
+    const hash = createHash("sha256").update(body, "utf8").digest("base64");
+    assert.ok(scriptSrc.includes(`'sha256-${hash}'`), `an inline script is not covered by the CSP: ${body.slice(0, 60)}…`);
+  }
+
+  // Anything the page loads from somewhere else needs a directive that allows it.
+  const external = [...html.matchAll(/(?:src|href)="(https?:\/\/[^"]+)"/gi)].map((m) => new URL(m[1]).origin);
+  for (const origin of new Set(external)) {
+    assert.ok(csp.includes(origin), `${origin} is loaded by the page but not allowed by the CSP`);
+  }
 });

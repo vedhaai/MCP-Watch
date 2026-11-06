@@ -35,7 +35,10 @@ test("dashboard: choose rules only, a local model or an API model; the key never
   t.after(model.close);
   const port = 9300 + Math.floor(Math.random() * 500);
   const base = `http://127.0.0.1:${port}`;
-  const dash = spawn(process.execPath, [CLI, "--port", String(port), "--data", mkdtempSync(path.join(os.tmpdir(), "mcpwatch-ai-dash-"))], { stdio: "ignore" });
+  // The stand-in provider is a loopback server, which is the self-hosted-endpoint case the dashboard
+  // only allows when whoever started it opted in.
+  const dash = spawn(process.execPath, [CLI, "--port", String(port), "--data", mkdtempSync(path.join(os.tmpdir(), "mcpwatch-ai-dash-"))],
+    { stdio: "ignore", env: { ...process.env, MCPWATCH_AI_ALLOW_PRIVATE: "1" } });
   t.after(() => dash.kill());
   let cookie;
   const api = async (p, method = "GET", body, headers = {}) => {

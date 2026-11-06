@@ -10,7 +10,8 @@ export interface Credentials {
 }
 
 export interface SignedIn {
-  user: { username: string } | null;
+  // `owner`: this account set up the dashboard, so it sees what belongs to no project.
+  user: { username: string; owner: boolean } | null;
 }
 
 export interface Ok {
@@ -84,6 +85,12 @@ export interface GuardConfig {
 
 export interface GuardEvents {
   events?: unknown[];
+}
+
+// A guard's report that some of its checks failed.
+export interface GuardHealth {
+  errors?: number;
+  fail_open?: boolean;
 }
 
 export interface Stored {

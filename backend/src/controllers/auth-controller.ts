@@ -19,25 +19,31 @@ export class AuthController extends Controller {
   @Get("me")
   public me(@Request() req: ExpressRequest): SignedIn {
     const user = this.auth.userFor(tokenFrom(req.headers.cookie));
-    return { user: user ? { username: user.username } : null };
+    return { user: user ? { username: user.username, owner: this.auth.isOwner(user) } : null };
   }
 
-  /** Creates an account and signs it in. */
+  /**
+   * Creates an account. The first one signs itself in; after that only a signed-in user can make
+   * one, and doing so leaves their own session alone.
+   */
   @Post("register")
   @Response(400, "Invalid username or password, or the username is taken")
-  public register(@Body() body: Credentials): SignedIn {
-    const { user, token } = this.auth.register(body.username, body.password);
-    this.setHeader("set-cookie", sessionCookie(token));
-    return { user: { username: user.username } };
+  @Response(403, "This dashboard already has an account")
+  @Response(429, "Too many attempts")
+  public async register(@Request() req: ExpressRequest, @Body() body: Credentials): Promise<SignedIn> {
+    const caller = this.auth.userFor(tokenFrom(req.headers.cookie));
+    const { user, token } = await this.auth.register(body.username, body.password, caller);
+    if (token) this.setHeader("set-cookie", sessionCookie(token));
+    return { user: { username: user.username, owner: this.auth.isOwner(user) } };
   }
 
   @Post("login")
   @Response(401, "Wrong username or password")
   @Response(429, "Too many failed attempts")
-  public login(@Body() body: Credentials): SignedIn {
-    const { user, token } = this.auth.login(body.username, body.password);
+  public async login(@Body() body: Credentials): Promise<SignedIn> {
+    const { user, token } = await this.auth.login(body.username, body.password);
     this.setHeader("set-cookie", sessionCookie(token));
-    return { user: { username: user.username } };
+    return { user: { username: user.username, owner: this.auth.isOwner(user) } };
   }
 
   /** Ends this session only. */

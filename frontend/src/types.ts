@@ -53,6 +53,8 @@ export interface Project {
   version: number;
   createdAt: string;
   lastSeenAt: string | null;
+  // The guard's last report that its checks were failing.
+  engineIssue?: { at: string; errors: number; failOpen: boolean } | null;
 }
 
 export interface RuleInfo {
@@ -70,4 +72,6 @@ export interface Meta {
 
 export interface User {
   username: string;
+  // This account set up the dashboard, so it sees what belongs to no project (local events).
+  owner: boolean;
 }
