@@ -3,6 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -353,3 +354,44 @@ test("dashboard: a guard cannot store an event the dashboard chokes on", async (
   assert.equal(latest.findings.length, 30);
 });
 
+test("dashboard: every response carries its security headers, and the CSP fits the page it serves", async (t) => {
+  startDashboard(t);
+  await ready();
+
+  // The API answers carry them too, so a JSON response can't be framed or sniffed into something else.
+  const json = await fetch(`${BASE}/api/auth/me`);
+  assert.equal(json.headers.get("x-content-type-options"), "nosniff");
+  assert.equal(json.headers.get("x-frame-options"), "DENY");
+  assert.match(json.headers.get("content-security-policy"), /frame-ancestors 'none'/);
+
+  const res = await fetch(`${BASE}/`);
+  const csp = res.headers.get("content-security-policy");
+  assert.ok(csp, "the page is served with a CSP");
+  assert.match(csp, /frame-ancestors 'none'/, "the dashboard cannot be framed");
+  assert.match(csp, /object-src 'none'/);
+  assert.match(csp, /base-uri 'none'/);
+
+  // script-src must not fall back to 'unsafe-inline': that would let an injected script run, which is
+  // the whole point of having a CSP here.
+  const scriptSrc = csp.split(";").map((d) => d.trim()).find((d) => d.startsWith("script-src"));
+  assert.ok(scriptSrc, "script-src is set explicitly rather than inherited");
+  assert.equal(scriptSrc.includes("'unsafe-inline'"), false, `script-src must stay strict, got: ${scriptSrc}`);
+
+  if (res.status !== 200) return; // the web app isn't built in this checkout; headers above still hold
+
+  // Every inline script in the page it actually serves has to be covered by a hash, or the browser
+  // blocks it and the dashboard loads broken.
+  const html = await res.text();
+  const inline = [...html.matchAll(/<script(?![^>]*\ssrc=)[^>]*>([\s\S]*?)<\/script>/gi)].map((m) => m[1]);
+  assert.ok(inline.length > 0, "the page has the inline theme script this guards");
+  for (const body of inline) {
+    const hash = createHash("sha256").update(body, "utf8").digest("base64");
+    assert.ok(scriptSrc.includes(`'sha256-${hash}'`), `an inline script is not covered by the CSP: ${body.slice(0, 60)}…`);
+  }
+
+  // Anything the page loads from somewhere else needs a directive that allows it.
+  const external = [...html.matchAll(/(?:src|href)="(https?:\/\/[^"]+)"/gi)].map((m) => new URL(m[1]).origin);
+  for (const origin of new Set(external)) {
+    assert.ok(csp.includes(origin), `${origin} is loaded by the page but not allowed by the CSP`);
+  }
+});

@@ -6,6 +6,7 @@ import express, { type ErrorRequestHandler, type Response } from "express";
 import { HttpError } from "./errors.js";
 import { RegisterRoutes } from "./generated/routes.js";
 import { rateLimit } from "./http/rate-limit.js";
+import { securityHeaders } from "./http/security-headers.js";
 import { createServices, type DashboardConfig } from "./services/index.js";
 
 // The MCPWatch dashboard server. People create projects here and copy a project key into their MCP
@@ -20,6 +21,9 @@ export function createApp(config: DashboardConfig): express.Express {
   const app = express();
   app.disable("x-powered-by");
   app.locals.services = createServices(config);
+
+  // On every response, before anything can answer early.
+  app.use(securityHeaders(path.join(WEB, "index.html")));
 
   // Signing in and creating an account both hash a password, which is deliberately slow. Capped per
   // client address, ahead of the body parser so an over-limit request is answered before its body is
@@ -49,14 +53,12 @@ export function createApp(config: DashboardConfig): express.Express {
     setHeaders(res, file) {
       const immutable = file.startsWith(path.join(WEB, "assets") + path.sep);
       res.setHeader("cache-control", immutable ? "public, max-age=31536000, immutable" : "no-cache");
-      res.setHeader("x-content-type-options", "nosniff");
     },
   }));
   app.get("/{*path}", (_req, res) => {
     const index = path.join(WEB, "index.html");
     if (!existsSync(index)) return res.status(500).type("text/plain").send("The dashboard web app isn't built. Run: npm run build");
     res.setHeader("cache-control", "no-cache");
-    res.setHeader("x-content-type-options", "nosniff");
     res.sendFile(index);
   });
   app.use((_req, res) => send(res, 404, "not found"));
