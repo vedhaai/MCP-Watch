@@ -2,7 +2,7 @@ import { createTheme } from "@mui/material/styles";
 
 export const MONO = 'ui-monospace, "JetBrains Mono", "Cascadia Mono", Consolas, monospace';
 
-// Warm palette: cream surfaces on a beige canvas, dark brown for selections, and an orange
+// Warm palette: white surfaces on an off-white canvas (near-black in dark mode), dark brown for selections, and an orange
 // gradient (ACCENT, the secondary color) for the main call to action and highlights.
 // Light, dark, or the system setting, chosen with <ThemeToggle> and remembered in the browser
 // (MUI's "mui-mode" key; index.html applies it before the first paint).
@@ -18,23 +18,23 @@ export const theme = createTheme({
         error: { main: "#b42318" },
         warning: { main: "#d9661f" },
         success: { main: "#2f7a4a" },
-        background: { default: "#f1e7dc", paper: "#fffaf4" },
+        background: { default: "#f8f5f2", paper: "#ffffff" },
         text: { primary: "#2b1a12", secondary: "#7a6656" },
-        divider: "#e6d9c9",
+        divider: "#efedea",
         action: { hover: "rgba(43,26,18,0.05)" },
       },
     },
     dark: {
       palette: {
-        primary: { main: "#f6e9da", contrastText: "#2b1a12" },
+        primary: { main: "#f3f2f0", contrastText: "#141210" },
         secondary: { main: "#f59a4a", contrastText: "#2b1a12" },
         error: { main: "#f0645a" },
         warning: { main: "#f59a4a" },
         success: { main: "#5fbf83" },
-        background: { default: "#120d0a", paper: "#1d1713" },
-        text: { primary: "#f6ece2", secondary: "#a8968a" },
-        divider: "#3a2f27",
-        action: { hover: "rgba(246,233,218,0.06)" },
+        background: { default: "#120e0b", paper: "#0e0d0c" },
+        text: { primary: "#f3f2f0", secondary: "#a3a09d" },
+        divider: "#232120",
+        action: { hover: "rgba(243,242,240,0.06)" },
       },
     },
   },

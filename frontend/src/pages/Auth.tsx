@@ -62,7 +62,7 @@ const flash = keyframes`from { background-color: rgba(236,106,44,0.12); } to { b
 const verdictSx = (v: Verdict) => (t: Theme) => ({
   fontFamily: MONO, fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", px: 1, py: 0.375, borderRadius: "6px", border: "1px solid", flexShrink: 0,
   ...(v === "ALLOW" && { borderColor: "divider", color: "text.primary", bgcolor: "background.paper" }),
-  ...(v === "BLOCK" && { borderColor: "transparent", color: "#fff", bgcolor: "#b8430f", ...t.applyStyles("dark", { bgcolor: "#ec6a2c", color: "#1d1713" }) }),
+  ...(v === "BLOCK" && { borderColor: "transparent", color: "#fff", bgcolor: "#b8430f", ...t.applyStyles("dark", { bgcolor: "#ec6a2c", color: "#0e0d0c" }) }),
   ...(v === "FLAG" && {
     borderColor: "#f6cfae", color: "#b8430f", bgcolor: "#fde8d7",
     ...t.applyStyles("dark", { borderColor: "rgba(245,154,74,0.25)", color: "#f59a4a", bgcolor: "rgba(236,106,44,0.16)" }),
