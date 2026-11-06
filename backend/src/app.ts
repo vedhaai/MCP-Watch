@@ -5,6 +5,7 @@ import { ValidateError } from "@tsoa/runtime";
 import express, { type ErrorRequestHandler, type Response } from "express";
 import { HttpError } from "./errors.js";
 import { RegisterRoutes } from "./generated/routes.js";
+import { rateLimit } from "./http/rate-limit.js";
 import { createServices, type DashboardConfig } from "./services/index.js";
 
 // The MCPWatch dashboard server. People create projects here and copy a project key into their MCP
@@ -19,6 +20,13 @@ export function createApp(config: DashboardConfig): express.Express {
   const app = express();
   app.disable("x-powered-by");
   app.locals.services = createServices(config);
+
+  // Signing in and creating an account both hash a password, which is deliberately slow. Capped per
+  // client address, ahead of the body parser so an over-limit request is answered before its body is
+  // read. The per-username lockout in AuthService is the other half: this bounds one caller, that
+  // one bounds attempts against one account.
+  const authLimit = rateLimit({ windowMs: 60_000, max: 20, message: "Too many attempts. Try again in a minute." });
+  app.use(["/api/auth/login", "/api/auth/register"], authLimit);
 
   // Dashboard writes must be JSON: a cross-site form can't send that without a CORS preflight we never allow.
   app.use("/api", (req, res, next) => {

@@ -12,6 +12,10 @@ export class UserRepository {
     this.users = readJson<User[]>(this.file, []);
   }
 
+  count(): number {
+    return this.users.length;
+  }
+
   oldest(): User | undefined {
     return this.users[0];
   }

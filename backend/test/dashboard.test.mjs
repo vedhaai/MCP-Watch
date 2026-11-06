@@ -31,11 +31,11 @@ async function api(p, opts = {}) {
   return { status: res.status, body: await res.json(), cookie: setCookie ? setCookie.split(";")[0] : undefined };
 }
 
-function startDashboard(t) {
+function startDashboard(t, env = {}) {
   PORT += 1; // one port per test, so a dashboard still shutting down never collides
   BASE = `http://127.0.0.1:${PORT}`;
   const data = mkdtempSync(path.join(os.tmpdir(), "mcpwatch-dash-"));
-  const dash = spawn(process.execPath, [CLI, "--port", String(PORT), "--data", data], { stdio: "ignore" });
+  const dash = spawn(process.execPath, [CLI, "--port", String(PORT), "--data", data], { stdio: "ignore", env: { ...process.env, ...env } });
   t.after(() => dash.kill());
   return data;
 }
@@ -54,7 +54,9 @@ test("dashboard: accounts, sessions and per-user projects", async (t) => {
   const alice = await api("/api/auth/register", { method: "POST", body: { username: "alice", password: "alice-pass-1" } });
   assert.equal(alice.status, 200);
   assert.match(alice.cookie, /^mw_session=/);
-  assert.equal((await api("/api/auth/register", { method: "POST", body: { username: "ALICE", password: "another-pass" } })).status, 400);
+  // Usernames are unique regardless of case. Checked as a signed-in caller, because an anonymous one
+  // is now turned away before the dashboard will say whether a name is taken.
+  assert.equal((await api("/api/auth/register", { method: "POST", cookie: alice.cookie, body: { username: "ALICE", password: "another-pass" } })).status, 400);
   assert.equal((await api("/api/auth/me", { cookie: alice.cookie })).body.user.username, "alice");
 
   // Writes must be JSON (blocks cross-site form posts).
@@ -64,7 +66,12 @@ test("dashboard: accounts, sessions and per-user projects", async (t) => {
   // Each user sees only their own projects; someone else's project looks missing.
   const a1 = (await api("/api/projects", { method: "POST", cookie: alice.cookie, body: { name: "Alice server", kind: "middleware" } })).body;
   await api("/api/projects", { method: "POST", cookie: alice.cookie, body: { name: "Alice second", kind: "proxy-stdio" } });
-  const bob = await api("/api/auth/register", { method: "POST", body: { username: "bob", password: "bob-pass-12" } });
+  // Alice makes bob's account; it doesn't touch her session, so bob signs in himself.
+  const made = await api("/api/auth/register", { method: "POST", cookie: alice.cookie, body: { username: "bob", password: "bob-pass-12" } });
+  assert.equal(made.status, 200);
+  assert.equal(made.cookie, undefined, "creating an account for someone else must not reassign your own session");
+  assert.equal((await api("/api/auth/me", { cookie: alice.cookie })).body.user.username, "alice");
+  const bob = await api("/api/auth/login", { method: "POST", body: { username: "bob", password: "bob-pass-12" } });
   assert.equal((await api("/api/projects", { cookie: alice.cookie })).body.length, 2);
   assert.equal((await api("/api/projects", { cookie: bob.cookie })).body.length, 0);
   assert.equal((await api(`/api/projects/${a1.id}`, { cookie: bob.cookie })).status, 404);
@@ -211,5 +218,57 @@ test("dashboard: a user cannot aim the AI settings at the dashboard's own networ
   const ok = await api(`/api/projects/${p.id}`, { cookie, method: "PATCH", body: { ai: { provider: "api", url: "https://api.openai.com/v1", model: "gpt-4o-mini", apiKey: "sk-test" } } });
   assert.equal(ok.status, 200);
   assert.equal((await api("/api/agent/config", { headers: { "x-mcpwatch-key": p.key } })).body.policy.ai_url, "https://api.openai.com/v1");
+});
+
+test("dashboard: only the first account is open; after that one is made by someone signed in", async (t) => {
+  startDashboard(t);
+  await ready();
+
+  // Nobody yet, so the first account can sign itself up.
+  const owner = await api("/api/auth/register", { method: "POST", body: { username: "owner", password: "owner-pass-1" } });
+  assert.equal(owner.status, 200);
+  assert.match(owner.cookie, /^mw_session=/);
+
+  // From here an anonymous request is turned away, and before the dashboard says whether a name is
+  // taken — otherwise it would answer that question for anyone who asks.
+  const uninvited = await api("/api/auth/register", { method: "POST", body: { username: "attacker", password: "attacker-p1" } });
+  assert.equal(uninvited.status, 403);
+  assert.match(uninvited.body.error, /already has an account/);
+  assert.equal((await api("/api/auth/register", { method: "POST", body: { username: "owner", password: "owner-pass-1" } })).status, 403,
+    "an existing username must not be distinguishable from a free one");
+  assert.equal((await api("/api/auth/login", { method: "POST", body: { username: "attacker", password: "attacker-p1" } })).status, 401,
+    "the refused account was not created");
+
+  // A signed-in user can still add one.
+  assert.equal((await api("/api/auth/register", { method: "POST", cookie: owner.cookie, body: { username: "colleague", password: "colleague-1" } })).status, 200);
+  assert.equal((await api("/api/auth/login", { method: "POST", body: { username: "colleague", password: "colleague-1" } })).status, 200);
+
+  // A password long enough to be a lever on the hash is refused rather than hashed.
+  assert.equal((await api("/api/auth/register", { method: "POST", cookie: owner.cookie, body: { username: "big", password: "p".repeat(5000) } })).status, 400);
+});
+
+test("dashboard: open registration can be turned back on by whoever starts the dashboard", async (t) => {
+  startDashboard(t, { MCPWATCH_OPEN_REGISTRATION: "1" });
+  await ready();
+  assert.equal((await api("/api/auth/register", { method: "POST", body: { username: "first", password: "first-pass-1" } })).status, 200);
+  const second = await api("/api/auth/register", { method: "POST", body: { username: "second", password: "second-pass" } });
+  assert.equal(second.status, 200, "the opt-in restores the old behaviour for a shared dashboard");
+  assert.match(second.cookie, /^mw_session=/);
+});
+
+test("dashboard: signing in is capped per caller, so password hashing can't be used as a lever", async (t) => {
+  startDashboard(t);
+  await ready();
+
+  // Distinct usernames, so the per-username lockout isn't what answers: this is the per-caller cap.
+  const codes = [];
+  for (let i = 0; i < 24; i++) {
+    codes.push((await api("/api/auth/login", { method: "POST", body: { username: `nobody${i}`, password: "whatever-123" } })).status);
+  }
+  assert.ok(codes.slice(0, 20).every((c) => c === 401), `the first 20 are answered normally, got ${JSON.stringify(codes)}`);
+  assert.ok(codes.slice(20).every((c) => c === 429), `everything past the cap is refused, got ${codes.slice(20)}`);
+
+  // Reading who is signed in is cheap and stays available.
+  assert.equal((await api("/api/auth/me")).status, 200);
 });
 
