@@ -24,7 +24,7 @@ export function runEngineServer(policy: Policy, serverKey: string, reporting: Re
     try {
       return await work();
     } catch (e) {
-      console.error(`[mcpwatch] guard error: ${(e as Error).message}`);
+      engine.noteFailure(e);
       if (policy.failOpen || msg?.id === undefined || msg?.method === undefined) return { forward: msg, reply: null };
       return { forward: null, reply: { jsonrpc: "2.0", id: msg.id, error: { code: BLOCKED, message: "MCPWatch failed closed" } } };
     }

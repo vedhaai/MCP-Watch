@@ -27,8 +27,39 @@ export function buildSinks(policy: Policy, r: Reporting): EventSink[] {
 }
 
 // With a project key, the project's mode, thresholds and client lists apply to the engine live.
+// Guard failures go to the dashboard too, so it can say the engine is having trouble.
 export function followProject(engine: Engine, r: Reporting) {
-  if (r.key) pollConfig(r.server ?? DEFAULT_SERVER, r.key, (update) => engine.updatePolicy(update), r.pollMs);
+  if (!r.key) return;
+  pollConfig(r.server ?? DEFAULT_SERVER, r.key, (update) => engine.updatePolicy(update), r.pollMs);
+  reportFailures(r.server ?? DEFAULT_SERVER, r.key, engine, r.pollMs);
+}
+
+// Every `intervalMs`, if any check threw since the last report, tells the dashboard how many did.
+// Nothing is sent while the engine is healthy.
+export function reportFailures(server: string, key: string, engine: Engine, intervalMs = 5000) {
+  const url = `${server.replace(/\/+$/, "")}/api/agent/health`;
+  let sending = false;
+  const send = async () => {
+    if (sending) return;
+    const { errors, failOpen } = engine.takeFailures();
+    if (!errors) return;
+    sending = true;
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { [KEY_HEADER]: key, "Content-Type": "application/json" },
+        body: JSON.stringify({ errors, fail_open: failOpen }),
+        signal: AbortSignal.timeout(3000),
+      });
+      if (!res.ok) throw new Error(`server answered ${res.status}`);
+    } catch (e) {
+      engine.restoreFailures(errors);
+      warn(`could not report guard errors to the dashboard: ${errorMessage(e)}`);
+    } finally {
+      sending = false;
+    }
+  };
+  setInterval(send, intervalMs).unref();
 }
 
 let lastWarning = 0;

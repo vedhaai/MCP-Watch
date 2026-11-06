@@ -74,6 +74,28 @@ export class Engine {
     return this.policy.mode;
   }
 
+  // Checks that threw since the dashboard was last told. Only the count is reported, never the
+  // error text: it can quote the message that was being checked.
+  private failures = 0;
+
+  // Called by a guard when a check throws, just before it fails open or closed.
+  noteFailure(error: unknown) {
+    this.failures++;
+    console.error(`[mcpwatch] guard error: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  // The failures to report, with whether messages passed unchecked or were refused. Resets the count.
+  takeFailures(): { errors: number; failOpen: boolean } {
+    const errors = this.failures;
+    this.failures = 0;
+    return { errors, failOpen: this.policy.failOpen };
+  }
+
+  // A report that could not be delivered is added back, so the next one carries it.
+  restoreFailures(errors: number) {
+    this.failures += errors;
+  }
+
   // Before the process exits: send queued events, giving up after `timeoutMs`.
   async flush(timeoutMs = 3000) {
     const all = Promise.all(this.sinks.map((s) => s.flush?.()));

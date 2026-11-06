@@ -44,6 +44,16 @@ export function status(p: Project) {
   return s < 30 ? { cls: "st-on", text: "Connected", on: true } : { cls: "st-off", text: `Last seen ${ago(p.lastSeenAt)}`, on: false };
 }
 
+// The guard reports failures every 5 s while they last, so a report older than this means it recovered.
+const ISSUE_WINDOW_S = 120;
+
+// The engine's current trouble, or null when its checks are working.
+export function engineIssue(p: Project) {
+  const issue = p.engineIssue;
+  if (!issue) return null;
+  return (Date.now() - Date.parse(issue.at)) / 1000 < ISSUE_WINDOW_S ? issue : null;
+}
+
 // Events are whatever a guard reported. The dashboard now checks them on the way in, but events
 // stored before that are still on disk, and one bad finding would break every render of the page
 // they are on — including the button that clears them. So the shape is enforced again on the way out.

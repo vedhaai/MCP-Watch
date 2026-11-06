@@ -1,7 +1,7 @@
 import type { AiSummary, McpEvent } from "@vedhaai/mcpwatch";
 import type { EventRepository } from "../data/event-repository.js";
 import type { ProjectRepository } from "../data/project-repository.js";
-import type { GuardConfig, GuardEvents, Stored } from "../models/api.js";
+import type { GuardConfig, GuardEvents, GuardHealth, Ok, Stored } from "../models/api.js";
 import type { Project } from "../models/project.js";
 import type { AiService } from "./ai-service.js";
 
@@ -33,6 +33,14 @@ export class AgentService {
     this.events.append(p.id, events);
     this.seen(p);
     return { ok: true, stored: events.length };
+  }
+
+  // A report with no failures is ignored; the warning clears on its own once reports stop.
+  health(p: Project, body: GuardHealth): Ok {
+    const errors = Math.min(Math.max(0, Math.trunc(Number(body.errors) || 0)), 1_000_000);
+    const at = new Date().toISOString();
+    if (errors) this.projects.update(p.id, { engineIssue: { at, errors, failOpen: body.fail_open !== false }, lastSeenAt: at });
+    return { ok: true };
   }
 
   private seen(p: Project) {

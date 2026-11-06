@@ -87,6 +87,12 @@ export interface GuardEvents {
   events?: unknown[];
 }
 
+// A guard's report that some of its checks failed.
+export interface GuardHealth {
+  errors?: number;
+  fail_open?: boolean;
+}
+
 export interface Stored {
   ok: boolean;
   stored: number;
