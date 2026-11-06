@@ -1,7 +1,7 @@
-import { appendFileSync, mkdirSync, renameSync, rmSync, statSync } from "node:fs";
+import { appendFileSync, renameSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
 import type { McpEvent } from "@vedhaai/mcpwatch";
-import { tailJsonLines } from "./json-files.js";
+import { FILE_MODE, secureDir, tailJsonLines } from "./json-files.js";
 
 const MAX_EVENTS_FILE = 20 * 1024 * 1024;
 
@@ -12,7 +12,7 @@ export class EventRepository {
 
   constructor(dataDir: string, private readonly localFile: string) {
     this.dir = path.join(dataDir, "events");
-    mkdirSync(this.dir, { recursive: true });
+    secureDir(this.dir);
   }
 
   private file(projectId: string) {
@@ -23,7 +23,7 @@ export class EventRepository {
   append(projectId: string, events: McpEvent[]) {
     if (!events.length) return;
     const file = this.file(projectId);
-    appendFileSync(file, events.map((e) => JSON.stringify(e)).join("\n") + "\n");
+    appendFileSync(file, events.map((e) => JSON.stringify(e)).join("\n") + "\n", { mode: FILE_MODE });
     if (statSync(file).size > MAX_EVENTS_FILE) renameSync(file, file + ".old");
   }
 

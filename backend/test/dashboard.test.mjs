@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtempSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -120,3 +120,59 @@ test("dashboard: create a project, configure it for its guards, and revoke its k
   assert.equal((await api("/api/agent/config", { headers: { "x-mcpwatch-key": p.key } })).status, 401);
   assert.equal((await api("/api/projects", { cookie })).body.length, 0);
 });
+
+test("dashboard: accounts, keys and events are never readable by other users", async (t) => {
+  // Password hashes, live session tokens and project keys all live in the data dir, so nothing in it
+  // may be group- or world-readable.
+  const data = startDashboard(t);
+  await ready();
+
+  const { cookie } = await api("/api/auth/register", { method: "POST", body: { username: "dana", password: "dana-pass-1" } });
+  const { body: p } = await api("/api/projects", { cookie, method: "POST", body: { name: "perms" } });
+  await api("/api/agent/events", { headers: { "x-mcpwatch-key": p.key }, method: "POST", body: { events: [{ mcp: { method: "tools/call", findings: [] } }] } });
+
+  for (const [file, mode] of modes(data)) {
+    assert.equal(mode & 0o077, 0, `${path.relative(data, file) || "."} is readable by other users (mode ${mode.toString(8)})`);
+  }
+  // The files that must exist by now, so the walk above can't pass by finding nothing.
+  const found = modes(data).map(([f]) => path.basename(f));
+  for (const name of ["users.json", "sessions.json", "projects.json", `${p.id}.jsonl`]) assert.ok(found.includes(name), `${name} was written`);
+});
+
+test("dashboard: a data dir left world-readable by an older version is tightened at startup", async (t) => {
+  // mode on writeFileSync/mkdirSync only applies at creation, so an upgrade has to chmod what it finds.
+  const data = mkdtempSync(path.join(os.tmpdir(), "mcpwatch-legacy-"));
+  mkdirSync(path.join(data, "events"), { recursive: true });
+  writeFileSync(path.join(data, "users.json"), "[]");
+  writeFileSync(path.join(data, "events", "old.jsonl"), "{}\n");
+  const stale = path.join(data, "stale-events.jsonl");
+  writeFileSync(stale, "{}\n");
+  for (const p of [data, path.join(data, "events")]) chmodSync(p, 0o755);
+  for (const p of [path.join(data, "users.json"), path.join(data, "events", "old.jsonl"), stale]) chmodSync(p, 0o644);
+
+  PORT += 1;
+  BASE = `http://127.0.0.1:${PORT}`;
+  const dash = spawn(process.execPath, [CLI, "--port", String(PORT), "--data", data, "--events", stale], { stdio: "ignore" });
+  t.after(() => dash.kill());
+  await ready();
+
+  for (const [file, mode] of modes(data)) {
+    assert.equal(mode & 0o077, 0, `${path.relative(data, file) || "."} was left readable by other users`);
+  }
+  // The local events file sits outside the data dir and is shared with the guards.
+  assert.equal(statSync(stale).mode & 0o077, 0, "the local events file was left readable by other users");
+  // Tightening must not have eaten the contents.
+  assert.equal(readFileSync(path.join(data, "events", "old.jsonl"), "utf8"), "{}\n");
+});
+
+// Every path under `dir`, including `dir` itself, with its permission bits.
+function modes(dir) {
+  const out = [[dir, statSync(dir).mode]];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...modes(p));
+    else out.push([p, statSync(p).mode]);
+  }
+  return out;
+}
+
