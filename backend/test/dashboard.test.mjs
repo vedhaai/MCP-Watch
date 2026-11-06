@@ -309,3 +309,47 @@ test("dashboard: local events belong to the account that set the dashboard up", 
   assert.equal((await api("/api/projects", { method: "POST", cookie: other.cookie, body: { name: "theirs" } })).status, 201);
 });
 
+test("dashboard: a guard cannot store an event the dashboard chokes on", async (t) => {
+  // Findings used to be stored exactly as the guard sent them, and the Requests view reads f.rule on
+  // every render. One null in the array broke the page for good, including the button to clear it.
+  startDashboard(t);
+  await ready();
+  const { cookie } = await api("/api/auth/register", { method: "POST", body: { username: "owner", password: "owner-pass-1" } });
+  const { body: p } = await api("/api/projects", { cookie, method: "POST", body: { name: "junk" } });
+
+  const sent = await api("/api/agent/events", {
+    headers: { "x-mcpwatch-key": p.key }, method: "POST",
+    body: { events: [{ mcp: {
+      method: "tools/call", time: "2026-11-06T00:00:00Z", score: 1,
+      findings: [null, "not-an-object", ["a"], 7, { severity: "bogus" }, { rule: "MW001", severity: "high", points: 5, detail: "real finding" }],
+      action: { evil: 1 }, enforceAction: [], clientRule: "nonsense", id: { x: 1 }, direction: "sideways",
+      server: "s".repeat(5000), snippet: "x".repeat(5000),
+    } }] },
+  });
+  assert.equal(sent.body.stored, 1);
+
+  const [e] = (await api(`/api/projects/${p.id}/events`, { cookie })).body;
+
+  // Nothing that isn't a finding survives, and the real detection is untouched.
+  assert.equal(e.findings.length, 2, `only the two object findings are kept, got ${JSON.stringify(e.findings)}`);
+  assert.ok(e.findings.every((f) => f && typeof f === "object" && typeof f.rule === "string" && typeof f.detail === "string"));
+  assert.ok(e.findings.every((f) => ["high", "medium", "low"].includes(f.severity)));
+  assert.deepEqual(e.findings[1], { rule: "MW001", severity: "high", points: 5, detail: "real finding" });
+
+  // Fields the page switches on are one of the values it knows, never a guard's own object.
+  assert.ok(["allow", "block", "throttle", "redact", "strip"].includes(e.action));
+  assert.ok(["allow", "block", "throttle", "redact", "strip"].includes(e.enforceAction));
+  assert.ok(["client->server", "server->client", "local"].includes(e.direction));
+  assert.equal(e.clientRule, undefined, "a clientRule that isn't block or allow is dropped");
+  assert.equal(e.id, undefined, "an id that isn't a string or number is dropped");
+  assert.ok(e.server.length <= 300 && e.snippet.length <= 600, "long strings are cut to their limit");
+
+  // The array itself is capped, so one batch can't bury the page in findings.
+  await api("/api/agent/events", {
+    headers: { "x-mcpwatch-key": p.key }, method: "POST",
+    body: { events: [{ mcp: { method: "tools/call", findings: Array.from({ length: 500 }, () => ({ rule: "MW002", severity: "low", points: 1, detail: "d" })) } }] },
+  });
+  const latest = (await api(`/api/projects/${p.id}/events`, { cookie })).body.at(-1);
+  assert.equal(latest.findings.length, 30);
+});
+

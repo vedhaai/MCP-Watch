@@ -4,7 +4,7 @@ import CircularProgress from "@mui/material/CircularProgress";
 import Link from "@mui/material/Link";
 import { api, SignInRequired } from "../api";
 import { Empty, PageHead, Tag } from "../components/ui";
-import { KINDS, status, usePoll } from "../lib";
+import { asEvents, KINDS, status, usePoll } from "../lib";
 import type { McpEvent, Project } from "../types";
 import { ClientsTab } from "./Clients";
 import { EventsView } from "./Events";
@@ -18,7 +18,7 @@ export function ProjectPage({ id, tab }: { id: string; tab: string }) {
   const { data, error, setData } = usePoll(async () => {
     const [project, events] = await Promise.all([
       api<Project>(`/api/projects/${id}`),
-      withEvents ? api<McpEvent[]>(`/api/projects/${id}/events?limit=2000`) : Promise.resolve([] as McpEvent[]),
+      withEvents ? api(`/api/projects/${id}/events?limit=2000`).then(asEvents) : Promise.resolve([] as McpEvent[]),
     ]);
     return { project, events };
   }, 2000, [id, tab]);
@@ -51,7 +51,7 @@ export function ProjectPage({ id, tab }: { id: string; tab: string }) {
 }
 
 export function LocalPage() {
-  const { data } = usePoll(() => api<McpEvent[]>("/api/local-events?limit=2000"), 2000, []);
+  const { data } = usePoll(() => api("/api/local-events?limit=2000").then(asEvents), 2000, []);
   return (
     <>
       <PageHead title="Local events" sub="From guards running without a project key (written to ~/.mcpwatch/events.jsonl)." />
