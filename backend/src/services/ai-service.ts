@@ -2,8 +2,14 @@ import { AiReviewer, DEFAULT_POLICY } from "@vedhaai/mcpwatch";
 import { HttpError } from "../errors.js";
 import type { AiSettingsInput, AiTestResult, GuardConfig } from "../models/api.js";
 import { LOCAL_AI, type ProjectAi } from "../models/project.js";
+import { assertReachable } from "./safe-url.js";
 
 type AiTarget = { url: string; model: string; apiKey: string; timeoutMs: number };
+
+// An API provider must be on the internet, so that a signed-in user can't aim the dashboard at the
+// host's own network. Whoever runs the dashboard can lift that for a self-hosted endpoint behind a
+// key; a user of the dashboard cannot, which is the line that matters.
+const ALLOW_PRIVATE_API = process.env.MCPWATCH_AI_ALLOW_PRIVATE === "1";
 
 export class AiService {
   // What the guard should use, or null for rules only.
@@ -42,6 +48,14 @@ export class AiService {
       if (!ai.apiKey) throw new HttpError(400, "Enter an API key");
     }
     return ai;
+  }
+
+  // Refuses settings whose URL the dashboard shouldn't fetch. Called before anything is saved and
+  // before Test AI runs, so a blocked address never reaches the network or a guard's config.
+  async assertAllowed(ai: ProjectAi): Promise<void> {
+    const t = this.target(ai);
+    if (!t) return;
+    await assertReachable(t.url, ai.provider === "api" && !ALLOW_PRIVATE_API ? "public" : "private", "AI URL");
   }
 
   // One harmful sample through the reviewer, the way a guard would send it. The first call to a local

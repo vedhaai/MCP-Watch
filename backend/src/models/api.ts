@@ -10,7 +10,8 @@ export interface Credentials {
 }
 
 export interface SignedIn {
-  user: { username: string } | null;
+  // `owner`: this account set up the dashboard, so it sees what belongs to no project.
+  user: { username: string; owner: boolean } | null;
 }
 
 export interface Ok {

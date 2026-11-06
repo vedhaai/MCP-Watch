@@ -70,4 +70,6 @@ export interface Meta {
 
 export interface User {
   username: string;
+  // This account set up the dashboard, so it sees what belongs to no project (local events).
+  owner: boolean;
 }

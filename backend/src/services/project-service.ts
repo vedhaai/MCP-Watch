@@ -46,9 +46,9 @@ export class ProjectService {
   }
 
   // Each change bumps the version, which is how guards notice new settings.
-  update(ownerId: string, id: string, patch: ProjectPatch): ProjectView {
+  async update(ownerId: string, id: string, patch: ProjectPatch): Promise<ProjectView> {
     const p = this.owned(ownerId, id);
-    const changes = this.checkPatch(patch, p);
+    const changes = await this.checkPatch(patch, p);
     return forBrowser(this.projects.update(p.id, { ...changes, version: p.version + 1 })!);
   }
 
@@ -65,9 +65,11 @@ export class ProjectService {
   }
 
   // Checks AI settings (saved, or the unsaved ones in the form) with a sample attack.
-  testAi(ownerId: string, id: string, input: AiSettingsInput): Promise<AiTestResult> {
+  async testAi(ownerId: string, id: string, input: AiSettingsInput): Promise<AiTestResult> {
     const p = this.owned(ownerId, id);
-    return this.ai.test(this.ai.fromInput(input, p.ai));
+    const ai = this.ai.fromInput(input, p.ai);
+    await this.ai.assertAllowed(ai);
+    return this.ai.test(ai);
   }
 
   events(ownerId: string, id: string, limit?: number): unknown[] {
@@ -85,7 +87,7 @@ export class ProjectService {
     }
   }
 
-  private checkPatch(body: ProjectPatch, current: Project): Partial<Project> {
+  private async checkPatch(body: ProjectPatch, current: Project): Promise<Partial<Project>> {
     const out: Partial<Project> = {};
     if (body.name !== undefined) {
       if (!body.name.trim()) throw new HttpError(400, "name must be a non-empty string");
@@ -114,7 +116,10 @@ export class ProjectService {
       out.allowedOrigins = origins;
     }
     if (body.requireAuth !== undefined) out.requireAuth = body.requireAuth;
-    if (body.ai !== undefined) out.ai = this.ai.fromInput(body.ai, current.ai);
+    if (body.ai !== undefined) {
+      out.ai = this.ai.fromInput(body.ai, current.ai);
+      await this.ai.assertAllowed(out.ai);
+    }
     if (body.expectedAudience !== undefined) out.expectedAudience = body.expectedAudience.trim().slice(0, 300);
     if (body.clients !== undefined) out.clients = { block: body.clients.block.slice(0, 500), allow: body.clients.allow.slice(0, 500) };
     return out;

@@ -12,8 +12,18 @@ export class UserRepository {
     this.users = readJson<User[]>(this.file, []);
   }
 
+  count(): number {
+    return this.users.length;
+  }
+
   oldest(): User | undefined {
     return this.users[0];
+  }
+
+  // The account that set up this dashboard: the first one created. It owns what exists outside any
+  // project — the projects made before accounts existed, and the local events file the guards share.
+  isOwner(userId: string): boolean {
+    return this.users.length > 0 && this.users[0].id === userId;
   }
 
   byId(id: string): User | undefined {
