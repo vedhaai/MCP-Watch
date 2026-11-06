@@ -19,7 +19,7 @@ export class AuthController extends Controller {
   @Get("me")
   public me(@Request() req: ExpressRequest): SignedIn {
     const user = this.auth.userFor(tokenFrom(req.headers.cookie));
-    return { user: user ? { username: user.username } : null };
+    return { user: user ? { username: user.username, owner: this.auth.isOwner(user) } : null };
   }
 
   /**
@@ -34,7 +34,7 @@ export class AuthController extends Controller {
     const caller = this.auth.userFor(tokenFrom(req.headers.cookie));
     const { user, token } = await this.auth.register(body.username, body.password, caller);
     if (token) this.setHeader("set-cookie", sessionCookie(token));
-    return { user: { username: user.username } };
+    return { user: { username: user.username, owner: this.auth.isOwner(user) } };
   }
 
   @Post("login")
@@ -43,7 +43,7 @@ export class AuthController extends Controller {
   public async login(@Body() body: Credentials): Promise<SignedIn> {
     const { user, token } = await this.auth.login(body.username, body.password);
     this.setHeader("set-cookie", sessionCookie(token));
-    return { user: { username: user.username } };
+    return { user: { username: user.username, owner: this.auth.isOwner(user) } };
   }
 
   /** Ends this session only. */

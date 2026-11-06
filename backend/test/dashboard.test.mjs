@@ -31,11 +31,13 @@ async function api(p, opts = {}) {
   return { status: res.status, body: await res.json(), cookie: setCookie ? setCookie.split(";")[0] : undefined };
 }
 
-function startDashboard(t, env = {}) {
+function startDashboard(t, env = {}, eventsFile) {
   PORT += 1; // one port per test, so a dashboard still shutting down never collides
   BASE = `http://127.0.0.1:${PORT}`;
   const data = mkdtempSync(path.join(os.tmpdir(), "mcpwatch-dash-"));
-  const dash = spawn(process.execPath, [CLI, "--port", String(PORT), "--data", data], { stdio: "ignore", env: { ...process.env, ...env } });
+  const args = [CLI, "--port", String(PORT), "--data", data];
+  if (eventsFile) args.push("--events", eventsFile);
+  const dash = spawn(process.execPath, args, { stdio: "ignore", env: { ...process.env, ...env } });
   t.after(() => dash.kill());
   return data;
 }
@@ -270,5 +272,40 @@ test("dashboard: signing in is capped per caller, so password hashing can't be u
 
   // Reading who is signed in is cheap and stays available.
   assert.equal((await api("/api/auth/me")).status, 200);
+});
+
+test("dashboard: local events belong to the account that set the dashboard up", async (t) => {
+  // Guards without a project key write to a shared file, so nothing in these events says whose they
+  // are. They are the host's own captured traffic, and only its owner sees them.
+  const events = path.join(mkdtempSync(path.join(os.tmpdir(), "mcpwatch-local-")), "events.jsonl");
+  writeFileSync(events, JSON.stringify({
+    time: "2026-11-06T00:00:00Z", method: "tools/call", findings: [], snippet: "OWNER-ONLY-DATA",
+    client: "c", server: "s", session: "x", direction: "client->server", mode: "observe", score: 0,
+  }) + "\n");
+  startDashboard(t, {}, events);
+  await ready();
+
+  const owner = await api("/api/auth/register", { method: "POST", body: { username: "owner", password: "owner-pass-1" } });
+  await api("/api/auth/register", { method: "POST", cookie: owner.cookie, body: { username: "colleague", password: "colleague-1" } });
+  const other = await api("/api/auth/login", { method: "POST", body: { username: "colleague", password: "colleague-1" } });
+
+  // The browser is told which account it is, so the page is only offered to the one that can load it.
+  assert.equal((await api("/api/auth/me", { cookie: owner.cookie })).body.user.owner, true);
+  assert.equal((await api("/api/auth/me", { cookie: other.cookie })).body.user.owner, false);
+
+  const mine = await api("/api/local-events", { cookie: owner.cookie });
+  assert.equal(mine.status, 200);
+  assert.equal(mine.body[0].snippet, "OWNER-ONLY-DATA");
+
+  const theirs = await api("/api/local-events", { cookie: other.cookie });
+  assert.equal(theirs.status, 403, "another account must not read the host's captured traffic");
+  assert.match(theirs.body.error, /set up this dashboard/);
+  assert.equal(JSON.stringify(theirs.body).includes("OWNER-ONLY-DATA"), false, "nothing of the traffic leaks in the refusal");
+
+  assert.equal((await api("/api/local-events")).status, 401);
+
+  // The rest of the dashboard is unchanged for the second account.
+  assert.equal((await api("/api/meta", { cookie: other.cookie })).status, 200);
+  assert.equal((await api("/api/projects", { method: "POST", cookie: other.cookie, body: { name: "theirs" } })).status, 201);
 });
 

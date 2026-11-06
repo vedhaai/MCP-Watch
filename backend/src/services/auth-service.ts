@@ -104,9 +104,15 @@ export class AuthService {
     return this.users.byId(s.userId);
   }
 
+  // Whether this account set up the dashboard. It sees what belongs to no project, so the browser is
+  // told as well: a page that isn't theirs shouldn't be offered in the first place.
+  isOwner(user: User): boolean {
+    return this.users.isOwner(user.id);
+  }
+
   private signIn(user: User): { user: User; token: string } {
     // The first account takes over projects created before accounts existed.
-    if (this.users.oldest()?.id === user.id) this.projects.claimUnowned(user.id);
+    if (this.users.isOwner(user.id)) this.projects.claimUnowned(user.id);
     const token = randomBytes(32).toString("base64url");
     this.sessions.set(token, { userId: user.id, expires: Date.now() + SESSION_DAYS * 86_400_000 });
     return { user, token };

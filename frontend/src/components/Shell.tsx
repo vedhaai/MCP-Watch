@@ -82,7 +82,11 @@ export function Shell({ route, projectId, children }: { route: string[]; project
   const configure: NavItem[] = PROJECT_TABS.slice(2).map(([k, l, icon]) => ({ label: l, href: `${project}/${k}`, icon, active: tab === k, disabled: !projectId }));
   const workspace: NavItem[] = [
     { label: "Projects", href: "#/", icon: <FolderOutlinedIcon fontSize="small" />, active: route.length === 0 || route[0] === "new" },
-    { label: "Local events", href: "#/local", icon: <ArticleOutlinedIcon fontSize="small" />, active: route[0] === "local" },
+    // Local events are the host's own captured traffic, so only the account that set up the
+    // dashboard is offered them.
+    ...(user.owner
+      ? [{ label: "Local events", href: "#/local", icon: <ArticleOutlinedIcon fontSize="small" />, active: route[0] === "local" }]
+      : []),
   ];
 
   return (
@@ -163,7 +167,7 @@ export function Shell({ route, projectId, children }: { route: string[]; project
 interface Command { label: string; hint: string; run: () => void }
 
 function CommandPalette({ open, onClose, projectId }: { open: boolean; onClose: () => void; projectId: string | undefined }) {
-  const { projects, signOut } = useApp();
+  const { user, projects, signOut } = useApp();
   const { setMode } = useColorScheme();
   const [q, setQ] = useState("");
   const [at, setAt] = useState(0);
@@ -173,12 +177,12 @@ function CommandPalette({ open, onClose, projectId }: { open: boolean; onClose: 
   const all = useMemo<Command[]>(() => [
     ...(current ? PROJECT_TABS.map(([k, l]) => ({ label: `${current.name}: ${l}`, hint: "page", run: go(`#/p/${current.id}/${k}`) })) : []),
     { label: "Projects", hint: "page", run: go("#/") },
-    { label: "Local events", hint: "page", run: go("#/local") },
+    ...(user.owner ? [{ label: "Local events", hint: "page", run: go("#/local") }] : []),
     { label: "New project", hint: "action", run: go("#/new") },
     ...(projects ?? []).filter((p) => p.id !== projectId).map((p) => ({ label: p.name, hint: "project", run: go(`#/p/${p.id}/requests`) })),
     ...THEME_MODES.map(([m, l]) => ({ label: `Theme: ${l}`, hint: "theme", run: () => setMode(m) })),
     { label: "Sign out", hint: "action", run: signOut },
-  ], [projects, projectId, setMode]);
+  ], [user, projects, projectId, setMode]);
   const list = all.filter((c) => c.label.toLowerCase().includes(q.trim().toLowerCase()));
 
   useEffect(() => {

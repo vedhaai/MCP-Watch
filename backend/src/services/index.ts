@@ -33,12 +33,13 @@ export function createServices({ port, dataDir, localEventsFile }: DashboardConf
   secureFile(localEventsFile);
   const projectRepo = new ProjectRepository(dataDir);
   const eventRepo = new EventRepository(dataDir, localEventsFile);
+  const userRepo = new UserRepository(dataDir);
   const ai = new AiService();
   const projects = new ProjectService(projectRepo, eventRepo, ai);
   return {
-    auth: new AuthService(new UserRepository(dataDir), new SessionRepository(dataDir), projects),
+    auth: new AuthService(userRepo, new SessionRepository(dataDir), projects),
     projects,
     agent: new AgentService(projectRepo, eventRepo, ai),
-    meta: new MetaService(`http://127.0.0.1:${port}`, eventRepo),
+    meta: new MetaService(`http://127.0.0.1:${port}`, eventRepo, userRepo),
   };
 }

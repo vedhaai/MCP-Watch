@@ -20,6 +20,12 @@ export class UserRepository {
     return this.users[0];
   }
 
+  // The account that set up this dashboard: the first one created. It owns what exists outside any
+  // project — the projects made before accounts existed, and the local events file the guards share.
+  isOwner(userId: string): boolean {
+    return this.users.length > 0 && this.users[0].id === userId;
+  }
+
   byId(id: string): User | undefined {
     return this.users.find((u) => u.id === id);
   }
