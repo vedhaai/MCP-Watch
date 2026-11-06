@@ -176,3 +176,40 @@ function modes(dir) {
   return out;
 }
 
+test("dashboard: a user cannot aim the AI settings at the dashboard's own network", async (t) => {
+  // Both the Test AI button and saving settings fetch (or hand a guard) the URL, so both check it.
+  startDashboard(t);
+  await ready();
+  const { cookie } = await api("/api/auth/register", { method: "POST", body: { username: "erin", password: "erin-pass-1" } });
+  const { body: p } = await api("/api/projects", { cookie, method: "POST", body: { name: "ssrf" } });
+
+  const internal = [
+    ["http://127.0.0.1:9299/v1", /local network/],
+    ["http://localhost:9299/v1", /local network/],
+    ["http://10.0.0.5/v1", /local network/],
+    ["http://169.254.169.254/latest/meta-data", /reserved address/],
+  ];
+  for (const [url, message] of internal) {
+    const ai = { provider: "api", url, model: "m", apiKey: "sk-test" };
+    const tested = await api(`/api/projects/${p.id}/ai-test`, { cookie, method: "POST", body: ai });
+    assert.equal(tested.status, 400, `Test AI should refuse ${url}`);
+    assert.match(tested.body.error, message);
+    const saved = await api(`/api/projects/${p.id}`, { cookie, method: "PATCH", body: { ai } });
+    assert.equal(saved.status, 400, `saving should refuse ${url}`);
+    assert.match(saved.body.error, message);
+  }
+  // Nothing was stored, so no guard is handed a blocked address.
+  assert.equal((await api(`/api/projects/${p.id}`, { cookie })).body.ai.provider, "off");
+
+  // A local model is the one case that may reach this machine — but not the metadata service.
+  assert.equal((await api(`/api/projects/${p.id}`, { cookie, method: "PATCH", body: { ai: { provider: "local", url: "http://127.0.0.1:11434/v1", model: "qwen2.5:7b" } } })).status, 200);
+  const metadata = await api(`/api/projects/${p.id}`, { cookie, method: "PATCH", body: { ai: { provider: "local", url: "http://169.254.169.254/v1", model: "m" } } });
+  assert.equal(metadata.status, 400);
+  assert.match(metadata.body.error, /reserved address/);
+
+  // A real provider still saves and reaches the guards.
+  const ok = await api(`/api/projects/${p.id}`, { cookie, method: "PATCH", body: { ai: { provider: "api", url: "https://api.openai.com/v1", model: "gpt-4o-mini", apiKey: "sk-test" } } });
+  assert.equal(ok.status, 200);
+  assert.equal((await api("/api/agent/config", { headers: { "x-mcpwatch-key": p.key } })).body.policy.ai_url, "https://api.openai.com/v1");
+});
+

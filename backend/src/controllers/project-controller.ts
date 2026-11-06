@@ -40,7 +40,7 @@ export class ProjectController extends Controller {
   @Patch("{id}")
   @Response(400, "Invalid settings")
   @Response(404, "Project not found")
-  public update(@Request() req: SessionRequest, @Path() id: string, @Body() body: ProjectPatch): ProjectView {
+  public update(@Request() req: SessionRequest, @Path() id: string, @Body() body: ProjectPatch): Promise<ProjectView> {
     return this.projects.update(req.user.id, id, body);
   }
 
