@@ -16,7 +16,7 @@ import Typography from "@mui/material/Typography";
 import AddIcon from "@mui/icons-material/Add";
 import ArticleOutlinedIcon from "@mui/icons-material/ArticleOutlined";
 import CableIcon from "@mui/icons-material/Cable";
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import FolderOutlinedIcon from "@mui/icons-material/FolderOutlined";
 import LogoutIcon from "@mui/icons-material/Logout";
 import PeopleIcon from "@mui/icons-material/People";
@@ -113,10 +113,16 @@ export function Shell({ route, projectId, children }: { route: string[]; project
               {user.username.slice(0, 1).toUpperCase()}
             </Avatar>
             <Typography sx={{ flex: 1, textAlign: "left", fontWeight: 600 }} noWrap>{user.username}</Typography>
-            <ExpandMoreIcon fontSize="small" />
+            <ChevronRightIcon fontSize="small" />
           </ButtonBase>
-          <Menu anchorEl={menu} open={!!menu} onClose={() => setMenu(null)} anchorOrigin={{ vertical: "top", horizontal: "left" }} transformOrigin={{ vertical: "bottom", horizontal: "left" }}>
-            <MenuItem onClick={() => { setMenu(null); signOut(); }}><LogoutIcon fontSize="small" sx={{ mr: 1 }} />Sign out</MenuItem>
+          <Menu anchorEl={menu} open={!!menu} onClose={() => setMenu(null)} anchorOrigin={{ vertical: "top", horizontal: "left" }} transformOrigin={{ vertical: "bottom", horizontal: "left" }}
+            // Opens just above the user button. Item as wide as a sidebar row (sidebar minus its 20px list padding),
+            // plus the menu's own 4px padding each side.
+            slotProps={{ paper: { sx: { width: SIDEBAR - 20 + 8, mt: -1 } }, list: { sx: { p: 0.5 } } }}>
+            <MenuItem onClick={() => { setMenu(null); signOut(); }} sx={{ borderRadius: "10px", py: 0.85, px: 1.25, minHeight: 0, fontSize: 14 }}>
+              <ListItemIcon sx={{ minWidth: 30, color: "text.primary", "& svg": { fontSize: 19 } }}><LogoutIcon fontSize="small" /></ListItemIcon>
+              Sign out
+            </MenuItem>
           </Menu>
         </Box>
       </Box>
