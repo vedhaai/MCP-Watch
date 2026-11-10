@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import type { AiSummary, McpEvent } from "@vedhaai/mcpwatch";
 import type { EventRepository } from "../data/event-repository.js";
 import type { ProjectRepository } from "../data/project-repository.js";
@@ -24,6 +25,12 @@ export class AgentService {
       },
       clients: { block: p.clients.block, throttle: [], allow: p.clients.allow },
     };
+  }
+
+  // HMAC-SHA256 over the exact JSON the guard will receive, keyed with the project key. A guard checks it, so
+  // something else answering on this port can't hand it settings (turn the mode off, point the AI at itself).
+  sign(config: GuardConfig, key: string): string {
+    return createHmac("sha256", key).update(JSON.stringify(config)).digest("hex");
   }
 
   // Up to 1000 events per batch; anything that isn't an MCP event is dropped.

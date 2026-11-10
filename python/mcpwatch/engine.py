@@ -66,8 +66,8 @@ class EngineUnavailable(RuntimeError):
 class Engine:
     """One engine process per guarded server, shared by every connection to it. Thread-safe.
 
-    Checks never raise: if the engine can't be reached, a message is passed on unchanged when
-    `fail_open` (the default), else a request is refused with -32001.
+    Checks never raise: if the engine can't be reached, a request is refused with -32001 (the default), or
+    passed on unchanged when `fail_open` is set.
     """
 
     def __init__(self, name: str = "mcp-server", *, command: str | list[str] | None = None,
@@ -76,7 +76,7 @@ class Engine:
         if unknown:
             raise TypeError(f"Unknown MCPWatch option(s): {', '.join(sorted(unknown))}")
         self.name = name
-        self.fail_open = options.get("fail_open", True)
+        self.fail_open = options.get("fail_open", False)
         self._options = {"name": name, **{_OPTION_NAMES[k]: v for k, v in options.items() if v is not None}}
         self._command = command
         self._start_timeout = start_timeout

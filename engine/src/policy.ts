@@ -34,8 +34,20 @@ export interface Policy {
   requireAuth: boolean;
   // If set, a JWT bearer token whose "aud" doesn't include it is refused.
   expectedAudience: string;
-  // Forward a message unchanged if the guard itself fails on it.
+  // What to do when the guard itself throws on a message. false (the default): refuse the request with
+  // -32001, so a payload that crashes a check can't slip through. true: forward it unchecked.
+  // Notifications and responses carry no id to answer, so they pass either way.
   failOpen: boolean;
+  // HTTP proxy: the largest request body (bytes) it will read, and the longest it waits for the upstream.
+  maxBodyBytes: number;
+  upstreamTimeoutMs: number;
+  // Most calls to the AI reviewer in flight at once; more are answered as "reviewer busy".
+  aiMaxConcurrent: number;
+  // Most sessions one guard keeps in memory; the least recently used are dropped first.
+  maxSessions: number;
+  // Never pin a tool that isn't pinned already: a new tool is refused like a changed one (MW024). Learn the
+  // tools in a normal run first. Default false: the first definition seen is trusted.
+  strictPins: boolean;
   eventsFile: string;
   pinsFile: string;
   // Shared by every guard on this machine: tool names per server (MW027, MW028) and fingerprints of
@@ -87,7 +99,12 @@ export const DEFAULT_POLICY: Policy = {
   allowedHosts: [],
   requireAuth: false,
   expectedAudience: "",
-  failOpen: true,
+  failOpen: false,
+  strictPins: false,
+  maxBodyBytes: 10_000_000,
+  upstreamTimeoutMs: 60_000,
+  aiMaxConcurrent: 8,
+  maxSessions: 10_000,
   eventsFile: path.join(HOME, "events.jsonl"),
   pinsFile: path.join(HOME, "pins.json"),
   ai: {
@@ -122,6 +139,7 @@ export function withEnv(overrides: PolicyOverrides, env: NodeJS.ProcessEnv = pro
   if (!out.mode && env.MCPWATCH_MODE) out.mode = env.MCPWATCH_MODE as Mode;
   if (!out.eventsFile && env.MCPWATCH_EVENTS) out.eventsFile = env.MCPWATCH_EVENTS;
   if (!out.pinsFile && env.MCPWATCH_PINS) out.pinsFile = env.MCPWATCH_PINS;
+  if (out.strictPins === undefined && env.MCPWATCH_STRICT_PINS) out.strictPins = env.MCPWATCH_STRICT_PINS === "1";
   const list = (v?: string) => (v ? v.split(",").map((s) => s.trim()).filter(Boolean) : undefined);
   out.allowedOrigins ??= list(env.MCPWATCH_ALLOWED_ORIGINS);
   out.allowedHosts ??= list(env.MCPWATCH_ALLOWED_HOSTS);
@@ -144,6 +162,12 @@ export function loadPolicy(configFile: string | undefined, overrides: PolicyOver
   }
   if (!["off", "observe", "protect", "enforce"].includes(policy.mode)) {
     throw new Error(`Unknown mode "${policy.mode}" (use off, observe, protect or enforce)`);
+  }
+  for (const k of ["windowSeconds", "throttleAt", "blockAt", "maxCallsPerWindow", "maxArgBytes", "maxArgDepth", "maxResultBytes",
+    "maxBodyBytes", "upstreamTimeoutMs", "aiMaxConcurrent", "maxSessions"] as const) {
+    if (typeof policy[k] !== "number" || !Number.isFinite(policy[k]) || policy[k] <= 0) {
+      throw new Error(`Setting "${k}" must be a positive number`);
+    }
   }
   return policy;
 }

@@ -19,6 +19,6 @@ mcpwatch-dashboard [--port 9100] [--data <dir>] [--events <file>]
                    (default ~/.mcpwatch/events.jsonl, or MCPWATCH_EVENTS)
 ```
 
-The dashboard listens on 127.0.0.1 only and stores everything as JSON files in the data folder.
+The dashboard listens on 127.0.0.1 only and stores everything as JSON files in the data folder. Project keys and AI API keys are encrypted in `projects.json`: with `MCPWATCH_DATA_KEY` if set (keep it outside the data folder), else with a generated `secret.key` in it. Settings sent to guards are signed with the project key (`X-MCPWatch-Signature`).
 
 Full documentation: https://github.com/vedhaai/MCP-Watch

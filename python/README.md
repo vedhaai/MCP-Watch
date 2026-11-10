@@ -92,7 +92,7 @@ Every adapter takes the Node middleware's options in snake_case. Options you lea
 | `deny_tools`, `allow_tools` | | Tool names that may never / only be called |
 | `allowed_origins`, `allowed_hosts`, `require_auth`, `expected_audience` | `MCPWATCH_ALLOWED_ORIGINS`, … | HTTP transport checks (MW030–MW036) |
 | `ai` | `MCPWATCH_AI=1`, … | AI reviewer, e.g. `{"enabled": True, "model": "qwen2.5:7b"}` |
-| `fail_open` | | `True` (default): if the engine can't run, messages pass unchecked and an error is logged. `False`: requests are refused |
+| `fail_open` | | `False` (default): if the engine can't run, requests are refused with `-32001`. `True`: messages pass unchecked and an error is logged |
 | `command` | `MCPWATCH_ENGINE` | How to start the engine, e.g. `node C:/path/to/MCP-Watch/engine/dist/cli.js`. Default: `mcpwatch` on PATH, else `npx -y @vedhaai/mcpwatch` |
 
 ## How it works

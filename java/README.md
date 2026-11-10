@@ -159,7 +159,7 @@ Options in code are the Node middleware's, on `McpWatchOptions.builder()`. What 
 | `server(String)` | `MCPWATCH_SERVER` | `http://127.0.0.1:9100` | Dashboard URL |
 | `enabled(boolean)` | `MCPWATCH_ENABLED=0` | `true` | `false` leaves the server untouched |
 | `mode(String)` | `MCPWATCH_MODE` | `enforce` | `off`, `observe`, `protect`, `enforce` |
-| `failOpen(boolean)` | | `true` | If the engine can't run: pass messages unchecked, or refuse requests with `-32001` |
+| `failOpen(boolean)` | | `false` | If the engine can't run: refuse requests with `-32001` (default), or pass messages unchecked |
 | `denyTools(String...)` | | — | Tools that may never be called (MW009) |
 | `allowTools(String...)` | | — | If set, only these may be called |
 | `allowedOrigins(String...)` | `MCPWATCH_ALLOWED_ORIGINS` | — | HTTP: web origins allowed to call the server (MW030) |

@@ -89,7 +89,7 @@ New projects start in **observe** mode: nothing is blocked, and each request sho
 
 **Accounts:** each user signs in with a username and password, and sees only their own projects. Users can have any number of projects, each with its own key. Passwords are stored as scrypt hashes, and sessions use an HttpOnly cookie that lasts 14 days. After 5 wrong passwords, sign-in for that username pauses for 5 minutes. Projects created before accounts existed go to the first account. Guards don't sign in; they use the project key.
 
-Data lives in `~/.mcpwatch/server/`: `users.json`, `sessions.json`, `projects.json`, plus one events file per project. The dashboard listens on 127.0.0.1 only.
+Data lives in `~/.mcpwatch/server/`: `users.json`, `sessions.json`, `projects.json`, plus one events file per project. The dashboard listens on 127.0.0.1 only. Project keys and AI API keys are stored encrypted (AES-256-GCM) in `projects.json`. The encryption key is `MCPWATCH_DATA_KEY` if you set it (keep it outside the data folder and a copy of `projects.json` is useless without it), else a random one generated into `secret.key` in the data folder, which only protects the file on its own. Keys saved in the clear by an older version are encrypted at the next start.
 
 ## Add it to your MCP server (middleware)
 
@@ -115,6 +115,10 @@ Settings come from options (`mcpwatch(server, { projectKey, server, mode })`) or
 | Variable | Meaning |
 |---|---|
 | `MCPWATCH_PROJECT_KEY` | Project key from the dashboard. Events go to that project, and its mode and client lists apply live |
+| `MCPWATCH_PROJECT_KEY_FILE` | Read the project key from this file instead (also `--project-key-file`): it then shows in neither the process listing nor the environment |
+| `MCPWATCH_REQUIRE_SIGNED` | `1`: refuse settings from the dashboard that aren't signed with the project key, even the first time |
+| `MCPWATCH_STRICT_PINS` | `1`: never pin a new tool; one that isn't pinned already is refused (see below) |
+| `MCPWATCH_PINS_KEY` | Signs `pins.json` and `registry.json` with an HMAC, so an edited or replaced file isn't believed |
 | `MCPWATCH_SERVER` | Dashboard URL (default `http://127.0.0.1:9100`) |
 | `MCPWATCH_ENABLED=0` | Disconnect: the server runs untouched |
 | `MCPWATCH_MODE` | `off`, `observe`, `protect`, `enforce` (default). With a project key, the project's mode wins |
@@ -212,7 +216,7 @@ node engine/dist/cli.js --ai -- npx -y some-mcp-server     # proxy with AI revie
 | **Model with an API key** | A hosted model through its OpenAI-compatible API. Presets for OpenAI, Anthropic (Claude), Google Gemini, Groq and OpenRouter, or a custom URL |
 
 - **Test AI:** sends one sample attack to the chosen model, before or after saving. It shows the response time and whether the model caught the attack, or why it failed (for example, a refused key).
-- **The API key:** stored in the dashboard's `projects.json` and passed to the project's guards with their settings. After saving, the browser only ever sees its last 4 characters. Leave the key field empty to keep the saved one.
+- **The API key:** stored encrypted in the dashboard's `projects.json` and passed to the project's guards with their settings. After saving, the browser only ever sees its last 4 characters. Leave the key field empty to keep the saved one.
 - **Data leaving the machine:** with an API model, messages go to that provider, with secrets masked. With a local model, nothing leaves the machine.
 - **Timeouts:** 8 s for a local model, 15 s for an API model.
 - **JSON mode:** some providers reject it. The guard then asks again without it.
@@ -291,13 +295,33 @@ Collisions, shadowing and cross-server leakage need to know about the *other* MC
 
 Pinned tool definitions live in `~/.mcpwatch/pins.json`. After you deliberately update a server, run `mcpwatch pins reset`.
 
+By default the first definition seen for a tool is trusted (trust on first use). Two options tighten that:
+
+- **Strict pinning** (`strictPins: true`, or `MCPWATCH_STRICT_PINS=1`): nothing new is pinned. A tool that isn't in `pins.json` is refused like a changed one (MW024), and a changed server name or version (MW038) keeps being reported instead of being accepted after the first time. Run once normally to learn your tools, then switch it on.
+- **Signed pin files** (`MCPWATCH_PINS_KEY`): `pins.json` and `registry.json` carry an HMAC. A file that was edited, or swapped for an unsigned one, is not believed: every tool counts as changed until you check your servers and run `mcpwatch pins reset`. Keep the key out of the data folder. When you turn it on for the first time, run `mcpwatch pins reset` once so the file is signed.
+
 Policy file (`--config policy.json`), all fields optional:
 
 ```json
 { "mode": "enforce", "windowSeconds": 60, "throttleAt": 3, "blockAt": 6,
-  "denyTools": ["run_command"], "allowTools": [], "failOpen": true,
+  "denyTools": ["run_command"], "allowTools": [], "failOpen": false,
   "allowedOrigins": ["https://app.example.com"], "allowedHosts": [], "requireAuth": false, "expectedAudience": "" }
 ```
+
+Settings about the guard itself:
+
+| Setting | Default | What it does |
+|---|---|---|
+| `failOpen` | `false` | If a check throws, refuse the request with `-32001`. `true` forwards it unchecked. Notifications and responses have no id to answer, so they pass either way. (The Python and Java adapters have their own `fail_open` / `failOpen` for the case where the engine process can't run; it now defaults to `false` there too.) |
+| `maxBodyBytes` | 10 000 000 | HTTP proxy: the largest request body it reads (413 beyond), and the largest single SSE event it buffers |
+| `upstreamTimeoutMs` | 60 000 | HTTP proxy: how long the upstream has to start answering |
+| `aiMaxConcurrent` | 8 | Most reviews with the model at once; up to 64 more wait, the rest skip the review (rules only, or MA002 when `required`) |
+| `maxSessions` | 10 000 | Most sessions one guard keeps; the least recently used go first |
+| `strictPins` | `false` | Never pin new tools; an unpinned tool is refused |
+
+The guard's own files (`pins.json`, `registry.json`, `events.jsonl`, `scan-baseline.json`) are created readable by their owner only (`0600`, directory `0700`). `events.jsonl` rotates to `events.jsonl.1` at 20 MB.
+
+**The dashboard link.** A project key is only sent over `https://` or to a loopback address; any other plain-HTTP dashboard URL is refused with a warning and the guard logs to the local events file instead. An AI endpoint pushed from the dashboard must also be `https://` or loopback. The dashboard signs the settings it sends with the project key (header `X-MCPWatch-Signature`), so something else answering on port 9100 can't hand a guard settings of its own: a wrong signature is ignored, and once a guard has seen a signed answer it refuses unsigned or older ones. Prefer `--project-key-file` or `MCPWATCH_PROJECT_KEY` to `--project-key`: command lines are visible to other users. The server a guard wraps (and any server `scan --connect` starts) gets the guard's environment without `MCPWATCH_PROJECT_KEY`, `MCPWATCH_PROJECT_KEY_FILE`, `MCPWATCH_AI_KEY`, `MCPWATCH_PINS_KEY` and `MCPWATCH_ENGINE_OPTIONS`.
 
 ## Scan: before a server runs
 

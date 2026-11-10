@@ -32,8 +32,8 @@ import org.slf4j.LoggerFactory;
  *
  * <p>One engine per guarded server, shared by every connection to it. Thread-safe.
  *
- * <p>Checks never throw: if the engine can't be reached, a message is passed on unchanged when
- * {@code failOpen} (the default), else a request is refused with {@code -32001}.
+ * <p>Checks never throw: if the engine can't be reached, a request is refused with
+ * {@code -32001} (the default), or passed on unchanged when {@code failOpen} is set.
  */
 public final class Engine implements AutoCloseable {
 

@@ -1,12 +1,14 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, unwatchFile, watchFile, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, unwatchFile, watchFile } from "node:fs";
+import { childEnv } from "./env.js";
+import { writePrivate } from "./fsutil.js";
 import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 import spawn from "cross-spawn";
 import { RULES } from "./catalog.js";
 import type { McpEvent } from "./events.js";
-import { HeaderwatchSink } from "./headerwatch.js";
+import { HeaderwatchSink, serverIsSafe } from "./headerwatch.js";
 import { findSecrets, isInternalHost, redactSecrets } from "./patterns.js";
 import { capabilities, checkToolDefinition, finding, type Finding, type ToolDef } from "./rules.js";
 
@@ -289,8 +291,7 @@ function loadBaseline(file: string): Baseline | null {
 }
 
 function saveBaseline(file: string, b: Baseline) {
-  mkdirSync(path.dirname(file), { recursive: true });
-  writeFileSync(file, JSON.stringify(b, null, 2));
+  writePrivate(file, JSON.stringify(b, null, 2));
 }
 
 // ---- --connect: start the server and ask for its tools ----
@@ -298,7 +299,7 @@ function saveBaseline(file: string, b: Baseline) {
 type Rpc = (method: string, params?: unknown) => Promise<Record<string, unknown>>;
 
 async function withStdio<T>(e: ServerEntry, timeoutMs: number, fn: (rpc: Rpc, notify: (m: string) => void) => Promise<T>): Promise<T> {
-  const child = spawn(e.command!, e.args ?? [], { stdio: ["pipe", "pipe", "ignore"], env: { ...process.env, ...e.env } });
+  const child = spawn(e.command!, e.args ?? [], { stdio: ["pipe", "pipe", "ignore"], env: { ...childEnv(), ...e.env } });
   const waiting = new Map<number, (m: Record<string, unknown>) => void>();
   let id = 0;
   readline.createInterface({ input: child.stdout! }).on("line", (l) => {
@@ -500,6 +501,7 @@ export function watchConfigs(opts: ScanOptions, onResult: (r: Awaited<ReturnType
 }
 
 export function reportTo(server: string, key: string, events: McpEvent[]) {
+  if (!serverIsSafe(server)) return Promise.resolve();
   const sink = new HeaderwatchSink(server, key);
   for (const e of events) sink.write(e);
   return sink.flush();

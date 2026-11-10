@@ -8,7 +8,16 @@ export const SECRET_PATTERNS: { name: string; re: RegExp }[] = [
   { name: "api-key", re: /\bsk-[A-Za-z0-9_-]{20,}\b/g },
   { name: "slack-token", re: /\bxox[abprs]-[A-Za-z0-9-]{10,}\b/g },
   { name: "jwt", re: /\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g },
+  { name: "google-api-key", re: /\bAIza[0-9A-Za-z_-]{35}\b/g },
+  { name: "stripe-key", re: /\b[rs]k_(?:live|test)_[0-9A-Za-z]{20,}\b/g },
+  { name: "npm-token", re: /\bnpm_[A-Za-z0-9]{36}\b/g },
+  // user:password@ inside a URL (database and proxy connection strings): the password is what goes.
+  { name: "url-password", re: /(\b[a-z][a-z0-9+.-]{1,20}:\/\/[^\s:/@]{1,100}:)[^\s@/]{1,200}(?=@)/gi },
+  { name: "bearer-token", re: /(\bBearer\s+)[A-Za-z0-9._~+/=-]{20,}/g },
 ];
+
+// Patterns whose first group (the label) stays in the output; only the value after it is replaced.
+const KEEP_PREFIX = new Set(["aws-secret-key", "url-password", "bearer-token"]);
 
 export function findSecrets(s: string): string[] {
   return SECRET_PATTERNS.filter((p) => {
@@ -21,7 +30,7 @@ export function redactSecrets(s: string): string {
   let out = s;
   for (const p of SECRET_PATTERNS) {
     p.re.lastIndex = 0;
-    out = p.name === "aws-secret-key"
+    out = KEEP_PREFIX.has(p.name)
       ? out.replace(p.re, `$1[REDACTED:${p.name}]`)
       : out.replace(p.re, `[REDACTED:${p.name}]`);
   }
@@ -33,8 +42,9 @@ const SHELL_CMDS =
 
 export const COMMAND_INJECTION: RegExp[] = [
   new RegExp(`(?:;|&&|\\|\\|?|\\n)\\s*(?:${SHELL_CMDS})\\b`, "i"),
-  /\$\([^)]+\)/,
-  /`[^`]+`/,
+  // Bounded: each `$(` or backtick without a closing partner would otherwise scan to the end of the text.
+  /\$\([^)]{1,500}\)/,
+  /`[^`]{1,500}`/,
   /\/dev\/tcp\/|\bmkfifo\b|\brm\s+-rf\s+[/~]/i,
 ];
 
@@ -93,7 +103,7 @@ export const OTHER_INJECTION: { name: string; re: RegExp }[] = [
   { name: "nosql-operator", re: /\{\s*["']?\$(?:where|ne|gt|gte|lt|lte|regex|nin|in|expr|function|accumulator)["']?\s*:/i },
   { name: "nosql-js", re: /\b(?:this\.\w+\s*==|sleep\(\d+\)|db\.\w+\.(?:find|drop|remove))\b|';\s*return\s+(?:true|1)/i },
   { name: "ldap", re: /\*\)\s*\(\s*[|&!]|\)\s*\(\s*\|?\s*\(?\s*(?:uid|cn|objectclass|mail)\s*=\s*\*/i },
-  { name: "template", re: /\{\{\s*[^}]*(?:\d\s*[*+]\s*\d|__class__|config|self\.|request\.|lipsum|cycler|constructor)[^}]*\}\}|\$\{\s*(?:\d\s*[*+]\s*\d|T\(|Runtime|java\.|jndi:)|<%=?\s*[^%]*(?:system|exec|`)|#\{\s*\d\s*\*\s*\d\s*\}/i },
+  { name: "template", re: /\{\{\s*[^}]{0,200}?(?:\d\s*[*+]\s*\d|__class__|config|self\.|request\.|lipsum|cycler|constructor)[^}]{0,200}\}\}|\$\{\s*(?:\d\s*[*+]\s*\d|T\(|Runtime|java\.|jndi:)|<%=?\s*[^%]{0,200}(?:system|exec|`)|#\{\s*\d\s*\*\s*\d\s*\}/i },
   { name: "xxe", re: /<!ENTITY\s+[%\w]+\s+(?:SYSTEM|PUBLIC)\b|<!DOCTYPE[^>]*\[\s*<!ENTITY/i },
 ];
 
@@ -115,3 +125,18 @@ export const CAPABILITIES: { name: string; re: RegExp }[] = [
 
 // Output that is sensitive enough for its lines to be remembered across servers (MB006).
 export const CONFIDENTIAL_LABEL = /\b(?:confidential|internal\s+only|do\s+not\s+(?:share|distribute|forward)|proprietary|restricted)\b/i;
+
+// A link that carries secrets or text for a model must not be readable on the way: https, or plain http only to this machine.
+export function isLoopbackHost(host: string): boolean {
+  const h = host.replace(/^\[|\]$/g, "").replace(/^::ffff:/, "").toLowerCase();
+  return h === "localhost" || h.endsWith(".localhost") || h === "::1" || /^127\.\d+\.\d+\.\d+$/.test(h);
+}
+
+export function isTrustedUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.protocol === "https:" || (u.protocol === "http:" && isLoopbackHost(u.hostname));
+  } catch {
+    return false;
+  }
+}

@@ -1,10 +1,11 @@
 #!/usr/bin/env node
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { checkAi } from "./ai-check.js";
 import { CATALOG } from "./catalog.js";
 import { runEngineServer } from "./engine-server.js";
-import { DEFAULT_SERVER, type Reporting } from "./headerwatch.js";
+import { Pins } from "./pins.js";
+import { DEFAULT_SERVER, projectKey, type Reporting } from "./headerwatch.js";
 import { runHttpProxy } from "./http-proxy.js";
 import { HOME, aiFromEnv, loadPolicy, withEnv, type Mode, type Policy, type PolicyOverrides } from "./policy.js";
 import { printReport, reportTo, scan, toEvents, watchConfigs, type ScanOptions, type ServerEntry } from "./scan.js";
@@ -25,7 +26,8 @@ const USAGE = `MCPWatch: security guard for MCP
 The dashboard is a separate package: npx @vedhaai/mcpwatch-dashboard [--port 9100] [--data <dir>]
 
 Proxy options:
-  --project-key <key>              report to a dashboard project (or MCPWATCH_PROJECT_KEY)
+  --project-key-file <file>        read the project key from a file (or MCPWATCH_PROJECT_KEY_FILE)
+  --project-key <key>              report to a dashboard project (or MCPWATCH_PROJECT_KEY); visible in process listings
   --server <url>                   dashboard URL (default ${DEFAULT_SERVER}, or MCPWATCH_SERVER)
   --mode off|observe|protect|enforce   (default enforce; a project's mode overrides it)
   --config <file.json>             policy file
@@ -77,9 +79,12 @@ try {
 
 const sub = own[0] && !own[0].startsWith("--") ? own[0] : undefined;
 const reporting: Reporting = {
-  key: opt("project-key") ?? process.env.MCPWATCH_PROJECT_KEY,
+  key: projectKey(opt("project-key"), opt("project-key-file")),
   server: opt("server") ?? process.env.MCPWATCH_SERVER ?? DEFAULT_SERVER,
 };
+
+// A key on the command line shows in every process listing; the environment variable doesn't.
+if (opt("project-key")) console.error("[mcpwatch] hint: pass the project key with --project-key-file or MCPWATCH_PROJECT_KEY, not --project-key: command lines are visible to other users");
 
 if (sub === "scan") {
   const files = own.flatMap((a, i) => (a === "--file" && own[i + 1] ? [own[i + 1]] : []));
@@ -123,6 +128,7 @@ if (sub === "scan") {
   let fromGuard: PolicyOverrides & Reporting & { name?: string } = {};
   try {
     fromGuard = JSON.parse(process.env.MCPWATCH_ENGINE_OPTIONS || "{}");
+    if (!fromGuard || typeof fromGuard !== "object" || Array.isArray(fromGuard)) throw new Error("MCPWATCH_ENGINE_OPTIONS must be a JSON object");
     const { name, key, server, localLog, pollMs, ...rest } = fromGuard;
     const guardPolicy = loadPolicy(opt("config") ?? process.env.MCPWATCH_CONFIG, withEnv({ ...overrides, ...rest, ai: { ...overrides.ai, ...rest.ai } }));
     runEngineServer(guardPolicy, opt("name") ?? name ?? "mcp-server", {
@@ -142,7 +148,7 @@ if (sub === "scan") {
 } else if (sub === "pins" && own[1] === "reset") {
   try {
     readFileSync(policy.pinsFile);
-    writeFileSync(policy.pinsFile, "{}");
+    Pins.clear(policy.pinsFile);
   } catch {
     // nothing pinned yet
   }

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import http from "node:http";
 import { BLOCKED, Engine, type Msg, type Outcome } from "./engine.js";
 import { buildSinks, followProject, type Reporting } from "./headerwatch.js";
@@ -35,18 +36,26 @@ export function runHttpProxy(policy: Policy, listen: number, upstream: URL, repo
 
   // A reply the guard owes the server (e.g. a refused sampling request) goes as its own POST.
   function replyToServer(headers: Record<string, string>, msg: Msg) {
-    fetch(upstream, { method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(msg) })
+    fetch(upstream, { method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(msg), signal: AbortSignal.timeout(policy.upstreamTimeoutMs) })
       .catch((e) => console.error(`[mcpwatch] could not reply to server: ${e.message}`));
   }
 
   http.createServer(async (req, res) => {
     const headers = upstreamHeaders(req);
-    let sessionId = (req.headers["mcp-session-id"] as string) || `http-${req.socket.remoteAddress}`;
+    // The MCP session id if there is one; else the caller's own token, so two callers behind one address
+    // (a NAT, a reverse proxy) don't share a score; else the address.
+    const bearer = req.headers.authorization ?? req.headers["x-api-key"];
+    let sessionId = (req.headers["mcp-session-id"] as string)
+      || (bearer ? `tok-${createHash("sha256").update(String(bearer)).digest("hex").slice(0, 12)}` : `http-${req.socket.remoteAddress}`);
     let body: string | undefined;
     const info: HttpInfo = {
       headers: req.headers, remoteAddress: req.socket.remoteAddress,
       encrypted: "encrypted" in req.socket && req.socket.encrypted === true, insecureUpstream,
     };
+
+    const abort = new AbortController();
+    let timer: NodeJS.Timeout | undefined;
+    res.on("close", () => abort.abort());
 
     try {
       if (req.method !== "POST" && engine.fromHttp(sessionId, info, req.method ?? "GET")) {
@@ -55,7 +64,16 @@ export function runHttpProxy(policy: Policy, listen: number, upstream: URL, repo
       }
       if (req.method === "POST") {
         const chunks: Buffer[] = [];
-        for await (const c of req) chunks.push(c as Buffer);
+        let size = 0;
+        for await (const c of req) {
+          size += (c as Buffer).length;
+          if (size > policy.maxBodyBytes) {
+            res.writeHead(413, { "content-type": "text/plain", connection: "close" }).end("Request too large for MCPWatch");
+            req.destroy();
+            return;
+          }
+          chunks.push(c as Buffer);
+        }
         const raw = Buffer.concat(chunks).toString("utf8");
         let parsed: unknown;
         try {
@@ -64,6 +82,11 @@ export function runHttpProxy(policy: Policy, listen: number, upstream: URL, repo
           parsed = undefined;
         }
         if (parsed === undefined) {
+          // Not JSON, so nothing to check message by message; the transport rules still apply.
+          if (engine.fromHttp(sessionId, info, "POST")) {
+            res.writeHead(403, { "content-type": "text/plain" }).end("Refused by MCPWatch");
+            return;
+          }
           body = raw;
         } else {
           const batch = Array.isArray(parsed);
@@ -85,7 +108,11 @@ export function runHttpProxy(policy: Policy, listen: number, upstream: URL, repo
         }
       }
 
-      const up = await fetch(upstream, { method: req.method, headers, body });
+      // The upstream gets `upstreamTimeoutMs` to answer (a JSON body included); a stream, once started, may run
+      // as long as it likes. A client that hangs up also ends the upstream request.
+      timer = setTimeout(() => abort.abort(), policy.upstreamTimeoutMs);
+      const up = await fetch(upstream, { method: req.method, headers, body, signal: abort.signal });
+      if ((up.headers.get("content-type") ?? "").includes("text/event-stream")) clearTimeout(timer);
       const newSession = up.headers.get("mcp-session-id");
       if (newSession && newSession !== sessionId) {
         engine.renameSession(sessionId, newSession);
@@ -101,7 +128,7 @@ export function runHttpProxy(policy: Policy, listen: number, upstream: URL, repo
       const strict = !!req.headers["mcp-session-id"];
 
       if (type.includes("text/event-stream") && up.body) {
-        await relaySse(up.body, res, (msg) => guard(sessionId, msg, "server", undefined, strict), (m) => replyToServer(headers, m),
+        await relaySse(up.body, res, policy.maxBodyBytes, (msg) => guard(sessionId, msg, "server", undefined, strict), (m) => replyToServer(headers, m),
           (id) => engine.noteEventId(sessionId, id));
       } else if (type.includes("application/json")) {
         const text = await up.text();
@@ -128,6 +155,8 @@ export function runHttpProxy(policy: Policy, listen: number, upstream: URL, repo
       console.error(`[mcpwatch] upstream error: ${(e as Error).message}`);
       if (!res.headersSent) res.writeHead(502, { "content-type": "text/plain" });
       res.end(`MCPWatch could not reach ${upstream.href}`);
+    } finally {
+      clearTimeout(timer);
     }
   }).listen(listen, "127.0.0.1", () => {
     const ai = policy.ai.enabled ? `, AI review by ${policy.ai.model}` : "";
@@ -139,6 +168,7 @@ export function runHttpProxy(policy: Policy, listen: number, upstream: URL, repo
 async function relaySse(
   body: ReadableStream<Uint8Array>,
   res: http.ServerResponse,
+  maxEventBytes: number,
   guard: (m: Msg) => Promise<Outcome>,
   replyToServer: (m: Msg) => void,
   noteEventId: (id: string) => void,
@@ -169,6 +199,7 @@ async function relaySse(
   };
   for await (const chunk of body as unknown as AsyncIterable<Uint8Array>) {
     buf += decoder.decode(chunk, { stream: true });
+    if (buf.length > maxEventBytes) throw new Error(`a stream event is larger than ${maxEventBytes} bytes`);
     let i: number;
     while ((i = buf.search(/\r?\n\r?\n/)) !== -1) {
       const event = buf.slice(0, i);
