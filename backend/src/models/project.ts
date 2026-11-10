@@ -26,6 +26,17 @@ export interface Project {
   version: number;
   createdAt: string;
   lastSeenAt: string | null;
+  // The last time a guard reported that its checks were failing; null when it never has.
+  engineIssue?: EngineIssue | null;
+}
+
+export interface EngineIssue {
+  // When the dashboard received the report (its own clock, not the guard's).
+  at: string;
+  // Checks that failed in that report.
+  errors: number;
+  // True: messages passed unchecked. False: requests were refused.
+  failOpen: boolean;
 }
 
 export interface ClientLists {

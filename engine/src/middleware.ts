@@ -129,7 +129,7 @@ class GuardedTransport implements Transport {
     try {
       return await check();
     } catch (e) {
-      console.error(`[mcpwatch] guard error: ${(e as Error).message}`);
+      this.engine.noteFailure(e);
       if (this.failOpen || msg.id === undefined || msg.method === undefined) return { forward: msg, reply: null };
       return { forward: null, reply: { jsonrpc: "2.0", id: msg.id, error: { code: -32001, message: "MCPWatch failed closed" } } };
     }

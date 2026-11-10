@@ -1,10 +1,12 @@
+import Alert from "@mui/material/Alert";
+import AlertTitle from "@mui/material/AlertTitle";
 import Box from "@mui/material/Box";
 import Card from "@mui/material/Card";
 import CircularProgress from "@mui/material/CircularProgress";
 import Link from "@mui/material/Link";
 import { api, SignInRequired } from "../api";
 import { Empty, PageHead, Tag } from "../components/ui";
-import { asEvents, KINDS, status, usePoll } from "../lib";
+import { ago, asEvents, engineIssue, KINDS, status, usePoll } from "../lib";
 import type { McpEvent, Project } from "../types";
 import { ClientsTab } from "./Clients";
 import { EventsView } from "./Events";
@@ -42,11 +44,30 @@ export function ProjectPage({ id, tab }: { id: string; tab: string }) {
           <Tag>mode: {p.mode}</Tag>
         </>
       } />
+      <EngineIssueBanner project={p} />
       {tab === "settings" ? <SettingsTab key={p.id} project={p} onChange={update} />
         : tab === "setup" ? <SetupTab project={p} />
         : tab === "clients" ? <ClientsTab project={p} events={events} onChange={update} />
         : <EventsView key={p.id} events={events} />}
     </>
+  );
+}
+
+// Shown while the guard reports failing checks; hides itself about two minutes after they stop.
+function EngineIssueBanner({ project }: { project: Project }) {
+  const issue = engineIssue(project);
+  if (!issue) return null;
+  return (
+    <Alert severity="warning" variant="outlined" sx={{ mb: 2, bgcolor: "background.paper" }}>
+      <AlertTitle>The MCPWatch engine is facing an issue</AlertTitle>
+      Some requests may not be tracked right now. Please check your requests again after some time.{" "}
+      {issue.failOpen
+        ? "Your MCP server keeps working; affected requests pass through unchecked."
+        : "Affected requests are being refused, because this server is set to fail closed."}
+      <Box component="span" sx={{ display: "block", mt: 0.5, color: "text.secondary", fontSize: 13 }}>
+        Last reported {ago(issue.at)}.
+      </Box>
+    </Alert>
   );
 }
 

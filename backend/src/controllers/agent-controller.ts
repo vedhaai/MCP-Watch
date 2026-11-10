@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Post, Request, Response, Route, Security, Tags } from "@tsoa/runtime";
 import type { GuardRequest } from "../http/authentication.js";
-import type { GuardConfig, GuardEvents, Stored } from "../models/api.js";
+import type { GuardConfig, GuardEvents, GuardHealth, Ok, Stored } from "../models/api.js";
 import type { AgentService } from "../services/agent-service.js";
 import type { Services } from "../services/index.js";
 
@@ -27,5 +27,11 @@ export class AgentController extends Controller {
   @Post("events")
   public events(@Request() req: GuardRequest, @Body() body: GuardEvents): Stored {
     return this.agent.report(req.user, body);
+  }
+
+  /** The guard's checks are failing: shown as a warning on the project's pages. */
+  @Post("health")
+  public health(@Request() req: GuardRequest, @Body() body: GuardHealth): Ok {
+    return this.agent.health(req.user, body);
   }
 }
