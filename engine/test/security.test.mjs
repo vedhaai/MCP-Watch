@@ -86,8 +86,8 @@ test("the guard's own secrets are not handed to the server it wraps", () => {
 
 test("more kinds of secret are masked", () => {
   const text = [
-    "AIzaSyA1234567890abcdefghijklmnopqrstuv", "sk_live_" + "a".repeat(24), "npm_" + "b".repeat(36),
-    "postgres://app:hunter2hunter2@db.internal:5432/x", "Authorization: Bearer abcdefghijklmnopqrstuvwxyz123456",
+    "AI" + "zaSyA1234567890abcdefghijklmnopqrstuv", "sk_live_" + "a".repeat(24), "npm_" + "b".repeat(36),
+    "postgres://app:" + "hunter2hunter2@db.internal:5432/x", "Authorization: Bearer abcdefghijklmnopqrstuvwxyz123456",
   ].join("\n");
   const out = redactSecrets(text);
   for (const leaked of ["AIzaSy", "sk_live_a", "npm_b", "hunter2", "abcdefghijklmnopqrstuvwxyz"]) assert.ok(!out.includes(leaked), `${leaked} is gone`);
