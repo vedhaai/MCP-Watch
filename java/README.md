@@ -16,12 +16,12 @@ Clients need no changes. It works with:
 <dependency>
   <groupId>ai.vedha</groupId>
   <artifactId>mcpwatch</artifactId>
-  <version>0.1.0</version>
+  <version>0.1.1</version>
 </dependency>
 ```
 
 ```kotlin
-implementation("ai.vedha:mcpwatch:0.1.0")
+implementation("ai.vedha:mcpwatch:0.1.1")
 ```
 
 The checks themselves run in the MCPWatch engine, which this package starts as a small child process (`mcpwatch engine`). The same engine provides the AI reviewer, the dashboard reporting and the live settings, so a Java server gets exactly the verdicts a Node or Python one would. **Node.js 20+ must be installed** on the machine running the server:

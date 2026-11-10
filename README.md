@@ -160,7 +160,7 @@ new McpWatchFilter("my-tools", options, "/mcp")  // any servlet app, and Streama
 ```
 
 ```xml
-<dependency><groupId>ai.vedha</groupId><artifactId>mcpwatch</artifactId><version>0.1.0</version></dependency>
+<dependency><groupId>ai.vedha</groupId><artifactId>mcpwatch</artifactId><version>0.1.1</version></dependency>
 ```
 
 As for Python, the checks run in this package's engine, which the Java package starts as a child process (`mcpwatch engine`, JSON lines over stdin/stdout), so Java servers get the same rules, AI reviewer, dashboard reporting and live settings as Node servers, and **Node 20+ must be installed** next to Java. It needs Java 17+, takes the same `MCPWATCH_*` variables, and brings no dependencies of its own beyond SLF4J. Setup, options and tests: [java/README.md](java/README.md).
