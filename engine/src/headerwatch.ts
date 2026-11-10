@@ -1,6 +1,8 @@
-import { randomBytes } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { readFileSync } from "node:fs";
 import type { Engine } from "./engine.js";
 import { EventLog, type EventSink, type McpEvent } from "./events.js";
+import { isTrustedUrl } from "./patterns.js";
 import type { Mode, Policy, PolicyOverrides } from "./policy.js";
 
 // Talks to a dashboard server with a project key: the MCPWatch dashboard (`mcpwatch dashboard`) or a
@@ -19,17 +21,43 @@ export interface Reporting {
   pollMs?: number;
 }
 
+// The project key travels in a header and settings come back in the body, so the link must not be
+// readable or changeable on the way: https, or plain http only to this machine.
+// Whether the guard may talk to this dashboard with a project key. Says why not, once.
+export function serverIsSafe(server: string): boolean {
+  if (isTrustedUrl(server)) return true;
+  warn(`not reporting to ${server}: the project key would cross the network unprotected. Use https:// or a loopback address`);
+  return false;
+}
+
+// The project key from, in order: an explicit value, a file (--project-key-file, MCPWATCH_PROJECT_KEY_FILE),
+// MCPWATCH_PROJECT_KEY. A file keeps the key out of the process listing and the environment.
+export function projectKey(explicit?: string, file?: string, env: NodeJS.ProcessEnv = process.env): string | undefined {
+  if (explicit) return explicit;
+  const path = file ?? env.MCPWATCH_PROJECT_KEY_FILE;
+  if (path) {
+    try {
+      const key = readFileSync(path, "utf8").trim();
+      if (key) return key;
+    } catch (e) {
+      warn(`could not read the project key file ${path}: ${errorMessage(e)}`);
+    }
+  }
+  return env.MCPWATCH_PROJECT_KEY || undefined;
+}
+
 export function buildSinks(policy: Policy, r: Reporting): EventSink[] {
   const sinks: EventSink[] = [];
-  if (r.localLog ?? !r.key) sinks.push(new EventLog(policy.eventsFile));
-  if (r.key) sinks.push(new HeaderwatchSink(r.server ?? DEFAULT_SERVER, r.key));
+  const reporting = !!r.key && serverIsSafe(r.server ?? DEFAULT_SERVER);
+  if (r.localLog ?? !reporting) sinks.push(new EventLog(policy.eventsFile));
+  if (reporting) sinks.push(new HeaderwatchSink(r.server ?? DEFAULT_SERVER, r.key!));
   return sinks;
 }
 
 // With a project key, the project's mode, thresholds and client lists apply to the engine live.
 // Guard failures go to the dashboard too, so it can say the engine is having trouble.
 export function followProject(engine: Engine, r: Reporting) {
-  if (!r.key) return;
+  if (!r.key || !serverIsSafe(r.server ?? DEFAULT_SERVER)) return;
   pollConfig(r.server ?? DEFAULT_SERVER, r.key, (update) => engine.updatePolicy(update), r.pollMs);
   reportFailures(r.server ?? DEFAULT_SERVER, r.key, engine, r.pollMs);
 }
@@ -169,9 +197,14 @@ export function policyFromConfig(cfg: ServerConfig): PolicyOverrides {
   const out: PolicyOverrides = {};
   if (typeof p.mode === "string" && ["off", "observe", "protect", "enforce"].includes(p.mode)) out.mode = p.mode as Mode;
   const num = (k: string) => (typeof p[k] === "number" ? (p[k] as number) : undefined);
-  const windowSeconds = num("window_seconds");
-  const throttleAt = num("throttle_at");
-  const blockAt = num("block_at");
+  // A number from the network must be a sane one: a zero or negative threshold would block or allow everything.
+  const positive = (k: string) => {
+    const n = num(k);
+    return n !== undefined && Number.isFinite(n) && n > 0 && n <= 1_000_000 ? n : undefined;
+  };
+  const windowSeconds = positive("window_seconds");
+  const throttleAt = positive("throttle_at");
+  const blockAt = positive("block_at");
   if (windowSeconds) out.windowSeconds = windowSeconds;
   if (throttleAt) out.throttleAt = throttleAt;
   if (blockAt) out.blockAt = blockAt;
@@ -182,23 +215,62 @@ export function policyFromConfig(cfg: ServerConfig): PolicyOverrides {
   if (typeof p.ai_review === "boolean") {
     out.ai = { enabled: p.ai_review };
     // The project picks the model too; without these (older dashboards, Headerwatch) the guard's own settings stay.
-    if (typeof p.ai_url === "string" && p.ai_url) out.ai.url = p.ai_url;
+    // The model endpoint receives the text of every reviewed message, and its key is sent along. A setting
+    // from the network may only point at this machine or an https address, never plain HTTP elsewhere.
+    const urlOk = typeof p.ai_url === "string" && p.ai_url !== "" && isTrustedUrl(p.ai_url);
+    if (typeof p.ai_url === "string" && p.ai_url) {
+      if (urlOk) out.ai.url = p.ai_url;
+      else warn(`ignored AI endpoint ${p.ai_url} from the dashboard: use https:// or a loopback address`);
+    }
     if (typeof p.ai_model === "string" && p.ai_model) out.ai.model = p.ai_model;
-    if (typeof p.ai_key === "string") out.ai.apiKey = p.ai_key;
-    if (typeof p.ai_timeout_ms === "number" && p.ai_timeout_ms > 0) out.ai.timeoutMs = p.ai_timeout_ms;
+    if (typeof p.ai_key === "string" && (urlOk || !p.ai_url)) out.ai.apiKey = p.ai_key;
+    if (typeof p.ai_timeout_ms === "number" && p.ai_timeout_ms > 0 && p.ai_timeout_ms <= 120_000) out.ai.timeoutMs = p.ai_timeout_ms;
   }
   if (cfg.clients) out.clients = { block: cfg.clients.block ?? [], allow: cfg.clients.allow ?? [] };
   return out;
 }
 
+export const SIGNATURE_HEADER = "x-mcpwatch-signature";
+
+// The dashboard signs its settings with the project key (HMAC-SHA256 over the exact body). Anything else
+// that answers on that port doesn't have the key, so it can't hand the guard settings of its own.
+// Once a signed answer has been seen, unsigned ones are refused, and so are older versions (a replay).
+// MCPWATCH_REQUIRE_SIGNED=1 refuses unsigned settings from the start. A Headerwatch server doesn't sign,
+// so by default the first answer may be unsigned.
+export class SettingsVerifier {
+  private signedSeen = false;
+  private version = -1;
+
+  constructor(private key: string, private requireSigned = process.env.MCPWATCH_REQUIRE_SIGNED === "1") {}
+
+  // The parsed settings, or an error saying why they are refused.
+  verify(body: string, signature: string | null): ServerConfig {
+    if (signature) {
+      const want = Buffer.from(createHmac("sha256", this.key).update(body).digest("hex"));
+      const got = Buffer.from(signature);
+      if (got.length !== want.length || !timingSafeEqual(got, want)) throw new Error("settings signature is wrong; ignored");
+      this.signedSeen = true;
+    } else if (this.signedSeen || this.requireSigned) {
+      throw new Error("unsigned settings refused");
+    }
+    const cfg = JSON.parse(body) as ServerConfig & { version?: unknown };
+    if (signature && typeof cfg.version === "number") {
+      if (cfg.version < this.version) throw new Error("older settings than already applied; ignored");
+      this.version = cfg.version;
+    }
+    return cfg;
+  }
+}
+
 // Fetches the project's settings now and then every `intervalMs`; a failed fetch keeps the last settings.
 export function pollConfig(server: string, key: string, apply: (update: PolicyOverrides) => void, intervalMs = 5000) {
   const url = `${server.replace(/\/+$/, "")}/api/agent/config`;
+  const verifier = new SettingsVerifier(key);
   const refresh = async () => {
     try {
       const res = await fetch(url, { headers: { [KEY_HEADER]: key }, signal: AbortSignal.timeout(3000) });
       if (!res.ok) throw new Error(`server answered ${res.status}`);
-      apply(policyFromConfig((await res.json()) as ServerConfig));
+      apply(policyFromConfig(verifier.verify(await res.text(), res.headers.get(SIGNATURE_HEADER))));
     } catch (e) {
       warn(`could not fetch settings from the Headerwatch server: ${errorMessage(e)}`);
     }

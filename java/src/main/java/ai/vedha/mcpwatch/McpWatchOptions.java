@@ -61,10 +61,10 @@ public final class McpWatchOptions {
 		return !"0".equals(System.getenv("MCPWATCH_ENABLED"));
 	}
 
-	/** True when the guard passes messages through if the engine can't be reached (the default). */
+	/** True when the guard passes messages through if the engine can't be reached. The default is false: requests are refused. */
 	public boolean isFailOpen() {
 		Object value = this.engineOptions.get("failOpen");
-		return !(value instanceof Boolean) || (Boolean) value;
+		return value instanceof Boolean && (Boolean) value;
 	}
 
 	List<String> engineCommand() {

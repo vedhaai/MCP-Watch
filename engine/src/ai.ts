@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { RULES, type Severity } from "./catalog.js";
 import type { AiSummary } from "./events.js";
-import { redactSecrets } from "./patterns.js";
+import { isTrustedUrl, redactSecrets } from "./patterns.js";
 import type { Policy } from "./policy.js";
 import { finding, type Finding } from "./rules.js";
 
@@ -49,6 +49,8 @@ const RULES_FOR: Record<ReviewKind, Record<string, string>> = {
   },
 };
 
+const MAX_WAITING = 64;
+
 const SEVERITIES: Severity[] = ["low", "medium", "high"];
 const lower = (s: Severity): Severity => SEVERITIES[Math.max(0, SEVERITIES.indexOf(s) - 1)];
 
@@ -86,6 +88,10 @@ export class AiReviewer {
   private warmed = "";
   // Providers that refuse response_format get asked without it from then on.
   private jsonMode = true;
+  // At most `aiMaxConcurrent` reviews are with the model at once and a bounded number wait their turn,
+  // so a flood of messages can't become a flood of model calls (or an unbounded pile of waiting ones).
+  private inflight = 0;
+  private waiters: (() => void)[] = [];
 
   // Reads `policy.ai` on every call, so settings changed at runtime apply.
   constructor(private policy: Policy, private readonly maxCache = 1000) {}
@@ -121,6 +127,13 @@ export class AiReviewer {
       return { findings: hit.findings, summary: { model: ai.model, verdict: hit.verdict, ms: Date.now() - started, cached: true } };
     }
 
+    if (!(await this.acquire())) {
+      const error = "reviewer busy";
+      warn(`AI review skipped (${error}); using the pattern rules only`);
+      const findings = ai.required ? [{ ...finding("MA002", `AI reviewer failed: ${error}`), source: "ai" as const }] : [];
+      return { findings, summary: { model: ai.model, verdict: "error", ms: 0, error } };
+    }
+    if (!isTrustedUrl(ai.url)) warn(`AI endpoint ${ai.url} is plain HTTP on another machine: message text is sent unprotected`);
     const tag = `untrusted-${randomBytes(6).toString("hex")}`;
     try {
       const reply = await this.chat([
@@ -136,7 +149,25 @@ export class AiReviewer {
       warn(`AI review failed (${error}); using the pattern rules only`);
       const findings = ai.required ? [{ ...finding("MA002", `AI reviewer failed: ${error}`), source: "ai" as const }] : [];
       return { findings, summary: { model: ai.model, verdict: "error", ms: Date.now() - started, error } };
+    } finally {
+      this.release();
     }
+  }
+
+  private async acquire(): Promise<boolean> {
+    if (this.inflight < this.policy.aiMaxConcurrent) {
+      this.inflight++;
+      return true;
+    }
+    if (this.waiters.length >= MAX_WAITING) return false;
+    await new Promise<void>((resolve) => this.waiters.push(resolve));
+    return true; // the slot was handed over, so `inflight` still counts it
+  }
+
+  private release() {
+    const next = this.waiters.shift();
+    if (next) next();
+    else this.inflight--;
   }
 
   private async chat(messages: { role: string; content: string }[], timeoutMs: number, maxTokens: number): Promise<string> {

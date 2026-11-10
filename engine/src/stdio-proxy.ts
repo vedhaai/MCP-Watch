@@ -2,6 +2,7 @@ import readline from "node:readline";
 import type { Readable, Writable } from "node:stream";
 import spawn from "cross-spawn";
 import { BLOCKED, Engine, type Msg, type Outcome } from "./engine.js";
+import { childEnv } from "./env.js";
 import { buildSinks, followProject, type Reporting } from "./headerwatch.js";
 import type { Policy } from "./policy.js";
 
@@ -13,7 +14,7 @@ export function runStdioProxy(policy: Policy, command: string, args: string[], r
   followProject(engine, reporting);
   const sessionId = `stdio-${process.pid}`;
 
-  const child = spawn(command, args, { stdio: ["pipe", "pipe", "inherit"], env: process.env });
+  const child = spawn(command, args, { stdio: ["pipe", "pipe", "inherit"], env: childEnv() });
   const toServer = (m: Msg | string) => child.stdin!.write((typeof m === "string" ? m : JSON.stringify(m)) + "\n");
   const toClient = (m: Msg | string) => process.stdout.write((typeof m === "string" ? m : JSON.stringify(m)) + "\n");
 

@@ -1,6 +1,7 @@
 import path from "node:path";
 import { AI_OFF, type Project } from "../models/project.js";
 import { readJson, writeJson } from "./json-files.js";
+import { SecretBox } from "./secret-box.js";
 
 const PROJECT_DEFAULTS: Partial<Project> = { allowedOrigins: [], requireAuth: false, expectedAudience: "", ai: AI_OFF };
 
@@ -8,16 +9,22 @@ const PROJECT_DEFAULTS: Partial<Project> = { allowedOrigins: [], requireAuth: fa
 export class ProjectRepository {
   private projects: Project[];
   private readonly file: string;
+  private readonly box: SecretBox;
 
   constructor(dir: string) {
     this.file = path.join(dir, "projects.json");
-    // Projects saved before a setting existed get its default.
-    this.projects = readJson<(Project & { aiReview?: boolean })[]>(this.file, [])
-      .map(({ aiReview, ...p }) => ({ ...PROJECT_DEFAULTS, ...(aiReview ? { ai: { ...AI_OFF, provider: "local" as const } } : {}), ...p }));
+    this.box = new SecretBox(dir);
+    const stored = readJson<(Project & { aiReview?: boolean })[]>(this.file, []);
+    // Projects saved before a setting existed get its default. Secrets are encrypted on disk and plain in memory.
+    this.projects = stored
+      .map(({ aiReview, ...p }) => ({ ...PROJECT_DEFAULTS, ...(aiReview ? { ai: { ...AI_OFF, provider: "local" as const } } : {}), ...p }))
+      .map((p) => ({ ...p, key: this.box.open(p.key), ai: { ...p.ai, ...(p.ai.apiKey ? { apiKey: this.box.open(p.ai.apiKey) } : {}) } }));
+    // Keys written by an older version are in the clear: encrypt them now.
+    if (stored.some((p) => (p.key && !this.box.isSealed(p.key)) || (p.ai?.apiKey && !this.box.isSealed(p.ai.apiKey)))) this.save();
   }
 
   private save() {
-    writeJson(this.file, this.projects);
+    writeJson(this.file, this.projects.map((p) => ({ ...p, key: this.box.seal(p.key), ai: { ...p.ai, ...(p.ai.apiKey ? { apiKey: this.box.seal(p.ai.apiKey) } : {}) } })));
   }
 
   all(): Project[] {
