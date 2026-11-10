@@ -37,7 +37,7 @@
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
     "prepublishOnly": "npm run clean && npm run build --prefix ../frontend && npm test"
   },
-  "license": "ISC",
+  "license": "MIT",
   "dependencies": {
     "@tsoa/runtime": "^6.6.0",
     "@vedhaai/mcpwatch": "^0.2.0",

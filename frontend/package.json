@@ -8,7 +8,7 @@
     "build": "tsc -p . && vite build",
     "dev": "vite"
   },
-  "license": "ISC",
+  "license": "MIT",
   "devDependencies": {
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",

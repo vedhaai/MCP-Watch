@@ -16,8 +16,8 @@
 
   <licenses>
     <license>
-      <name>ISC License</name>
-      <url>https://opensource.org/licenses/ISC</url>
+      <name>MIT License</name>
+      <url>https://opensource.org/licenses/MIT</url>
       <distribution>repo</distribution>
     </license>
   </licenses>

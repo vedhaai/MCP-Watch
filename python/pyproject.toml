@@ -7,7 +7,7 @@ name = "vedhaai-mcpwatch"
 version = "0.1.0"
 description = "Security guard for MCP servers in Python: the official MCP SDK, Django, Flask, FastAPI, any ASGI or WSGI app"
 readme = "README.md"
-license = "ISC"
+license = "MIT"
 requires-python = ">=3.10"
 keywords = ["mcp", "model-context-protocol", "security", "guard", "django", "flask", "fastapi", "prompt-injection"]
 classifiers = [

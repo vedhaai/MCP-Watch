@@ -27,7 +27,7 @@
     "ai": "node engine/dist/cli.js ai",
     "pins:reset": "node engine/dist/cli.js pins reset"
   },
-  "license": "ISC",
+  "license": "MIT",
   "devDependencies": {
     "concurrently": "^9.2.5"
   }

@@ -45,7 +45,7 @@
     "test": "node --test test/*.test.mjs",
     "prepublishOnly": "npm test"
   },
-  "license": "ISC",
+  "license": "MIT",
   "dependencies": {
     "cross-spawn": "^7.0.6"
   },
