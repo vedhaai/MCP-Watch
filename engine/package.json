@@ -1,6 +1,6 @@
 {
   "name": "@vedhaai/mcpwatch",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Security guard for MCP servers: middleware or proxy that scans every JSON-RPC message",
   "keywords": [
     "mcp",
@@ -45,7 +45,7 @@
     "test": "node --test test/*.test.mjs",
     "prepublishOnly": "npm test"
   },
-  "license": "ISC",
+  "license": "MIT",
   "dependencies": {
     "cross-spawn": "^7.0.6"
   },

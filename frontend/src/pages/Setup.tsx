@@ -64,7 +64,7 @@ app.add_middleware(McpWatchASGI, name="my-tools", path="/mcp")`} />],
         <CopyBlock text={`<dependency>
   <groupId>ai.vedha</groupId>
   <artifactId>mcpwatch</artifactId>
-  <version>0.1.0</version>
+  <version>0.1.1</version>
 </dependency>`} />
         <P>Needs Java 17+. The checks run in the MCPWatch engine, which needs Node 20+. The package starts it for you (the first start downloads it with npx). To skip that download, install it once:</P>
         <CopyBlock text="npm install -g @vedhaai/mcpwatch" />
