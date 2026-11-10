@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { Engine, type Msg, type Outcome } from "./engine.js";
-import { DEFAULT_SERVER, buildSinks, followProject } from "./headerwatch.js";
+import { DEFAULT_SERVER, buildSinks, followProject, projectKey as resolveKey } from "./headerwatch.js";
 import { loadPolicy, withEnv, type Mode, type PolicyOverrides } from "./policy.js";
 
 // The structural parts of the SDK's Transport that the guard needs. Kept local so a server built
@@ -62,7 +62,7 @@ export function mcpwatch(server: GuardableServer, options: McpWatchOptions = {})
   const serverName = name ?? low._serverInfo?.name ?? "mcp-server";
 
   const reporting = {
-    key: projectKey ?? env.MCPWATCH_PROJECT_KEY,
+    key: resolveKey(projectKey, undefined, env),
     server: hwServer ?? env.MCPWATCH_SERVER ?? DEFAULT_SERVER,
     localLog,
     pollMs: Number(env.MCPWATCH_POLL_MS ?? 5000),

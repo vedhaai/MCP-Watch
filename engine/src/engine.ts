@@ -63,7 +63,7 @@ export class Engine {
   private reviewer: AiReviewer;
 
   constructor(private policy: Policy, private serverKey: string, sinks?: EventSink[]) {
-    this.pins = new Pins(policy.pinsFile, serverKey);
+    this.pins = new Pins(policy.pinsFile, serverKey, policy.strictPins);
     this.registry = new Registry(policy.registryFile ?? path.join(path.dirname(policy.pinsFile), "registry.json"));
     this.sinks = sinks ?? [new EventLog(policy.eventsFile)];
     this.reviewer = new AiReviewer(policy);
@@ -131,9 +131,17 @@ export class Engine {
     return undefined;
   }
 
+  // Bounded: a caller inventing session ids can't grow the guard's memory without limit. The least
+  // recently used session goes first (a Map keeps insertion order, and a use moves a session to the end).
   session(id: string): Session {
     let s = this.sessions.get(id);
-    if (!s) this.sessions.set(id, (s = new Session(id, this.policy)));
+    if (s) {
+      this.sessions.delete(id);
+    } else {
+      s = new Session(id, this.policy);
+      while (this.sessions.size >= this.policy.maxSessions) this.sessions.delete(this.sessions.keys().next().value!);
+    }
+    this.sessions.set(id, s);
     return s;
   }
 
@@ -367,8 +375,9 @@ export class Engine {
         findings.push(finding("MW027", `"${tool.name}" is also offered by ${foreign.get(tool.name)!.join(", ")}`, `tool.${tool.name}`));
       }
       findings.push(...checkShadowing(tool, foreign, own));
-      if (this.pins.check(tool) === "changed") {
-        findings.push(finding("MW024", `"${tool.name}" no longer matches its pinned definition`, `tool.${tool.name}`));
+      const pin = this.pins.check(tool);
+      if (pin === "changed" || pin === "unpinned") {
+        findings.push(finding("MW024", pin === "changed" ? `"${tool.name}" no longer matches its pinned definition` : `"${tool.name}" is not pinned and strict pinning is on`, `tool.${tool.name}`));
         s.rugPulled.add(tool.name);
       }
       return findings;

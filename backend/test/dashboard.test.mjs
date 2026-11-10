@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -408,4 +408,25 @@ test("dashboard: every response carries its security headers, and the CSP fits t
   for (const origin of new Set(external)) {
     assert.ok(csp.includes(origin), `${origin} is loaded by the page but not allowed by the CSP`);
   }
+});
+
+test("dashboard: project and AI keys are encrypted on disk, and the settings a guard gets are signed with its key", async (t) => {
+  const data = startDashboard(t);
+  await ready();
+  const { cookie } = await api("/api/auth/register", { method: "POST", body: { username: "sec", password: "sec-pass-123" } });
+  const p = (await api("/api/projects", { cookie, method: "POST", body: { name: "Signed", kind: "middleware" } })).body;
+  await api(`/api/projects/${p.id}`, { cookie, method: "PATCH", body: { ai: { provider: "api", url: "https://api.openai.com/v1", model: "gpt-4o-mini", apiKey: "sk-test-very-secret" } } });
+
+  const onDisk = readFileSync(path.join(data, "projects.json"), "utf8");
+  assert.ok(!onDisk.includes(p.key), "the project key isn't stored in the clear");
+  assert.ok(!onDisk.includes("sk-test-very-secret"), "the AI key isn't stored in the clear");
+  assert.match(onDisk, /enc:v1:/);
+
+  // The guard still gets the plain key back, and a signature only its project key can produce.
+  const res = await fetch(`${BASE}/api/agent/config`, { headers: { "x-mcpwatch-key": p.key } });
+  const body = await res.text();
+  assert.equal(JSON.parse(body).policy.ai_key, "sk-test-very-secret");
+  const sig = res.headers.get("x-mcpwatch-signature");
+  assert.equal(sig, createHmac("sha256", p.key).update(body).digest("hex"));
+  assert.notEqual(sig, createHmac("sha256", "mw_someone_elses_key").update(body).digest("hex"));
 });

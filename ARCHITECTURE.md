@@ -79,7 +79,7 @@ All five run the same `Engine`. Only the wrapping differs.
 - **Java MCP SDK** (`McpWatch.guard(provider)`): wraps the transport provider. When the server registers its session factory, each new connection gets a guarded `McpServerTransport` (server → client) and a guarded `McpServerSession` (client → server). That covers stdio and HTTP+SSE.
 - **Java servlet filter** ([McpWatchFilter](java/src/main/java/ai/vedha/mcpwatch/http/McpWatchFilter.java), over [HttpGuard](java/src/main/java/ai/vedha/mcpwatch/http/HttpGuard.java)): the same port of the HTTP proxy's handling as Python's, for Spring Boot, Quarkus, Jetty, Tomcat — and for Streamable HTTP, where the request headers the transport rules need are only available in the servlet chain.
 
-If the engine can't start, `failOpen` decides, as for a guard error in Node.
+If the engine can't start, the adapter's own `fail_open` / `failOpen` decides (default: pass messages unchecked). A guard error inside the Node engine follows the engine's `failOpen`, which defaults to refusing the request.
 
 The Java package carries no dependencies of its own beyond SLF4J: the MCP SDK, Reactor and the servlet API are `provided`, and it brings [its own small JSON codec](java/src/main/java/ai/vedha/mcpwatch/Json.java) rather than force a Jackson version on the application it is injected into. Its checks are blocking, so each direction of each session runs them through a [Sequencer](java/src/main/java/ai/vedha/mcpwatch/sdk/Sequencer.java) off the transport thread — the Java form of the per-direction promise queue the Node and Python guards keep.
 
@@ -156,7 +156,7 @@ With a project key, the project's settings win over the guard's local options an
 |---|---|---|
 | `:9100` | Dashboard | `npm start` (or `npx @vedhaai/mcpwatch-dashboard`), on 127.0.0.1 only |
 | `:11434` | Ollama | `ollama serve` with `qwen2.5:7b`; any OpenAI-compatible server via `MCPWATCH_AI_URL` |
-| `~/.mcpwatch/server/` | Dashboard data | `users.json`, `sessions.json`, `projects.json`, `events/<id>.jsonl` per project (rotated at 20 MB) |
+| `~/.mcpwatch/server/` | Dashboard data | `users.json`, `sessions.json`, `projects.json` (keys encrypted), `secret.key`, `events/<id>.jsonl` per project (rotated at 20 MB) |
 | `~/.mcpwatch/pins.json` | Every guard | Pinned tool definitions and server versions; `mcpwatch pins reset` after a deliberate update |
 | `~/.mcpwatch/registry.json` | Every guard | Tool names and a tool-list digest per server, and hashes of sensitive output lines for one hour (MW027, MW028, MB006) |
 | `~/.mcpwatch/events.jsonl` | Guards without a key | Local event log, shown under Local events on the dashboard |
@@ -165,8 +165,9 @@ With a project key, the project's settings win over the guard's local options an
 
 ## Limits of this proof of concept
 
+- **Trust on first use, unless you tighten it.** By default the first definition seen for a tool is pinned and trusted, so a server that is malicious from the start is never flagged by MW024, and a changed server name or version (MW038) is reported once and then accepted. `strictPins` stops new tools being pinned, and `MCPWATCH_PINS_KEY` signs the pin and registry files. Without the key, the files are only owner-only: anything running as the same user can edit them.
 - **One computer.** The dashboard listens on 127.0.0.1, so only guards on this machine can report to it.
-- **Keys in plain JSON.** Project keys and AI API keys are stored unencrypted in `projects.json`. Any guard with the project key receives the AI key with its settings, over plain HTTP on loopback.
+- **Keys on disk.** Project keys and AI API keys are encrypted in `projects.json`, with `MCPWATCH_DATA_KEY` or a generated `secret.key` beside the file. The generated key only helps when the file leaves the folder by itself, not against anyone who can read the whole folder. Any guard with the project key receives the AI key with its settings, over plain HTTP on loopback. A guard refuses to send its key to a dashboard that is neither `https` nor loopback, and refuses settings that aren't signed with its project key once it has seen a signed answer (`MCPWATCH_REQUIRE_SIGNED=1` insists from the start).
 - **JSON files, not a database.** Fine for a few projects. Many busy servers need real storage.
 - **State per process.** Each guard keeps its own sessions and scores. Only pins and the registry are shared, through files.
 - **The AI adds latency and misses things.** A 7B model takes about 0.4–1 s per reviewed message, longer while it loads. In testing it missed a metadata-URL SSRF that MW003 caught. That's why the rules keep the final say.

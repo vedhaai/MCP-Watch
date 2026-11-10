@@ -20,7 +20,9 @@ export class AgentController extends Controller {
   /** The project's settings for its guards. */
   @Get("config")
   public config(@Request() req: GuardRequest): GuardConfig {
-    return this.agent.config(req.user);
+    const config = this.agent.config(req.user);
+    this.setHeader("X-MCPWatch-Signature", this.agent.sign(config, req.user.key));
+    return config;
   }
 
   /** A batch of up to 1000 events. */

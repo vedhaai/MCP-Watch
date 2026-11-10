@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
-import path from "node:path";
+import { readFileSync, statSync } from "node:fs";
+import { integrityKey, seal, tightenExisting, unseal, writePrivateAtomic } from "./fsutil.js";
 
 // What every guard on this machine shares through one small file: the tools each server offers,
 // and fingerprints of lines of sensitive output. One guard only ever sees its own server; this is
@@ -32,20 +32,47 @@ export function toolsDigest(tools: { name: string; description?: string; inputSc
   return digest(JSON.stringify(list));
 }
 
+// The file is shared and lives on disk, so nothing in it is trusted to have the right shape.
+function sanitize(d: unknown): Data {
+  const out: Data = { servers: {}, lines: {} };
+  const obj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+  if (!obj(d)) return out;
+  if (obj(d.servers)) {
+    for (const [name, s] of Object.entries(d.servers)) {
+      if (!obj(s) || !Array.isArray(s.tools) || typeof s.seenAt !== "number") continue;
+      out.servers[name] = {
+        tools: s.tools.filter((t): t is string => typeof t === "string"), seenAt: s.seenAt, fp: typeof s.fp === "string" ? s.fp : undefined,
+      };
+    }
+  }
+  if (obj(d.lines)) {
+    for (const [k, v] of Object.entries(d.lines)) {
+      if (obj(v) && typeof v.server === "string" && typeof v.t === "number") out.lines[k] = { server: v.server, t: v.t };
+    }
+  }
+  return out;
+}
+
 export class Registry {
   private data: Data = { servers: {}, lines: {} };
   private mtime = -1;
 
-  constructor(private file: string) {}
+  constructor(private file: string, private key = integrityKey()) {}
 
   // Re-read only when another guard changed the file.
   private load(): Data {
     try {
       const m = statSync(this.file).mtimeMs;
       if (m !== this.mtime) {
-        const d = JSON.parse(readFileSync(this.file, "utf8"));
-        this.data = { servers: d.servers ?? {}, lines: d.lines ?? {} };
+        const { data, status } = unseal(readFileSync(this.file, "utf8"), this.key);
         this.mtime = m;
+        if (status !== "ok") {
+          // Not written by a guard holding the key: ignored, and overwritten by the next save.
+          console.error(`[mcpwatch] ${this.file} ${status === "unsigned" ? "is not signed" : "does not match its signature"}; ignoring it`);
+          return this.data;
+        }
+        this.data = sanitize(data);
+        tightenExisting(this.file);
       }
     } catch {
       // no registry yet, or a partial write by another guard: keep what we have
@@ -59,10 +86,7 @@ export class Registry {
     const lines = Object.entries(d.lines).filter(([, v]) => now - v.t <= LINE_TTL);
     d.lines = Object.fromEntries(lines.slice(-MAX_LINES));
     try {
-      mkdirSync(path.dirname(this.file), { recursive: true });
-      const tmp = `${this.file}.${process.pid}.tmp`;
-      writeFileSync(tmp, JSON.stringify(d));
-      renameSync(tmp, this.file);
+      writePrivateAtomic(this.file, seal(d, this.key));
       this.mtime = statSync(this.file).mtimeMs;
     } catch (e) {
       console.error(`[mcpwatch] could not save the registry: ${(e as Error).message}`);

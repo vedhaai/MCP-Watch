@@ -11,14 +11,30 @@ interface Call { t: number; tool: string; argsHash: string }
 
 export interface Pending { method: string; tool?: string; t: number }
 
+// What one session may hold. A caller that never answers, or never repeats itself, still can't grow it without bound.
+const MAX_PENDING = 5000;
+const MAX_HISTORY = 2000;
+
+// A Map that forgets its oldest entry once it holds `max`.
+class BoundedMap<K, V> extends Map<K, V> {
+  constructor(private max: number) {
+    super();
+  }
+
+  override set(key: K, value: V): this {
+    if (!this.has(key) && this.size >= this.max) this.delete(this.keys().next().value!);
+    return super.set(key, value);
+  }
+}
+
 // Everything the guard remembers about one MCP session (one stdio process, or one HTTP session id).
 export class Session {
   // "name version" for display, and the bare name that block / trust lists match on.
   client = "unknown";
   clientName = "unknown";
   // Requests waiting for a response, by JSON-RPC id. Client->server and server->client ids are separate.
-  pendingFromClient = new Map<string | number, Pending>();
-  pendingFromServer = new Map<string | number, Pending>();
+  pendingFromClient = new BoundedMap<string | number, Pending>(MAX_PENDING);
+  pendingFromServer = new BoundedMap<string | number, Pending>(MAX_PENDING);
   // The tool list as last seen by the client (after the guard removed anything it blocked).
   tools: Map<string, ToolDef> | null = null;
   // Tools whose definitions changed after they were pinned. Calls to them are refused.
@@ -46,12 +62,14 @@ export class Session {
   // True the first time `key` is seen in this session; for findings that should be reported once.
   once(key: string): boolean {
     if (this.seen.has(key)) return false;
+    if (this.seen.size >= MAX_HISTORY) this.seen.clear();
     this.seen.add(key);
     return true;
   }
 
   addPoints(points: number, now = Date.now()) {
     if (points > 0) this.points.push({ t: now, points });
+    if (this.points.length > MAX_HISTORY) this.points.splice(0, this.points.length - MAX_HISTORY);
   }
 
   score(now = Date.now()): number {
@@ -61,6 +79,7 @@ export class Session {
 
   noteBlocked(now = Date.now()) {
     this.blocked.push(now);
+    if (this.blocked.length > MAX_HISTORY) this.blocked.splice(0, this.blocked.length - MAX_HISTORY);
   }
 
   // Secrets came back from the server; an outbound call soon after looks like exfiltration.
@@ -92,6 +111,7 @@ export class Session {
     }
 
     this.calls.push({ t: now, tool, argsHash });
+    if (this.calls.length > MAX_HISTORY) this.calls.splice(0, this.calls.length - MAX_HISTORY);
     return out;
   }
 }

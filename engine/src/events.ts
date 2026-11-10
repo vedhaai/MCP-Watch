@@ -1,5 +1,5 @@
-import { appendFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
+import { appendPrivate, privateDir, tightenExisting } from "./fsutil.js";
 import type { Finding } from "./rules.js";
 
 export type Action = "allow" | "block" | "throttle" | "redact" | "strip";
@@ -46,12 +46,13 @@ export interface EventSink {
 // Appends one JSON line per event. Synchronous appends keep lines whole when several proxies share the file.
 export class EventLog implements EventSink {
   constructor(private file: string) {
-    mkdirSync(path.dirname(file), { recursive: true });
+    privateDir(path.dirname(file));
+    tightenExisting(file);
   }
 
   write(event: McpEvent) {
     try {
-      appendFileSync(this.file, JSON.stringify(event) + "\n");
+      appendPrivate(this.file, JSON.stringify(event) + "\n");
     } catch (e) {
       console.error(`[mcpwatch] could not write event: ${(e as Error).message}`);
     }

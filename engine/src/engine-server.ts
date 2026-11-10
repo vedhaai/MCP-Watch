@@ -15,6 +15,8 @@ import type { HttpInfo } from "./transport.js";
 //
 // Requests are answered as soon as they are checked, so a slow AI review never holds up another
 // connection; the caller keeps each direction in order. Logs go to stderr only.
+const MODES: Mode[] = ["off", "observe", "protect", "enforce"];
+
 export function runEngineServer(policy: Policy, serverKey: string, reporting: Reporting = {}) {
   const engine = new Engine(policy, serverKey, buildSinks(policy, reporting));
   followProject(engine, reporting);
@@ -31,6 +33,9 @@ export function runEngineServer(policy: Policy, serverKey: string, reporting: Re
   }
 
   async function handle(req: Msg): Promise<object> {
+    // Every session id and message must be what the sidecar protocol says; anything else is refused, not guessed at.
+    if (["client", "server", "http", "drop", "eventId"].includes(req.op) && typeof req.session !== "string") return { error: "session must be a string" };
+    if (["client", "server"].includes(req.op) && (!req.msg || typeof req.msg !== "object" || Array.isArray(req.msg))) return { error: "msg must be a JSON object" };
     switch (req.op) {
       case "client":
         return check(() => engine.fromClient(req.session, req.msg, req.http as HttpInfo | undefined), req.msg);
@@ -48,6 +53,8 @@ export function runEngineServer(policy: Policy, serverKey: string, reporting: Re
         engine.noteEventId(req.session, req.eventId);
         return { ok: true };
       case "mode":
+        // Only the guard that started us talks to us, but a bad value must not silently switch checking off or on.
+        if (!MODES.includes(req.mode as Mode)) return { error: `unknown mode "${String(req.mode)}"` };
         engine.updatePolicy({ mode: req.mode as Mode });
         return { ok: true, mode: engine.mode };
       case "flush":
@@ -63,8 +70,11 @@ export function runEngineServer(policy: Policy, serverKey: string, reporting: Re
     let req: Msg;
     try {
       req = JSON.parse(line);
+      if (!req || typeof req !== "object" || Array.isArray(req)) throw new Error("not an object");
     } catch {
-      console.error("[mcpwatch] engine: ignored a line that isn't JSON");
+      // Answered, so a caller waiting on this line doesn't wait forever (it can't match an id, so it is null).
+      console.error("[mcpwatch] engine: refused a line that isn't a JSON object");
+      send({ id: null, error: "request is not a JSON object" });
       return;
     }
     handle(req).then(

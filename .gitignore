@@ -3,6 +3,9 @@ dist/
 .env
 .env.*
 
+# Dashboard encryption key, generated into the data folder
+secret.key
+
 # Java package
 target/
 
