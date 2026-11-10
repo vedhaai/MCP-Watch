@@ -53,6 +53,8 @@ export interface Project {
   version: number;
   createdAt: string;
   lastSeenAt: string | null;
+  // The guard's last report that its checks were failing.
+  engineIssue?: { at: string; errors: number; failOpen: boolean } | null;
 }
 
 export interface RuleInfo {

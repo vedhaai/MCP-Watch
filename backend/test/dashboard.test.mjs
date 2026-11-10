@@ -43,6 +43,9 @@ function startDashboard(t, env = {}, eventsFile) {
   return data;
 }
 
+// Windows has no group/other permission bits: chmod there only toggles read-only.
+const NO_POSIX_MODES = process.platform === "win32" && "POSIX file modes do not exist on Windows";
+
 test("dashboard: accounts, sessions and per-user projects", async (t) => {
   startDashboard(t);
   await ready();
@@ -125,13 +128,24 @@ test("dashboard: create a project, configure it for its guards, and revoke its k
   assert.equal((await api("/api/agent/config", { headers: { "x-mcpwatch-key": p.key } })).status, 200);
   assert.ok((await api(`/api/projects/${p.id}`, { cookie })).body.lastSeenAt, "project shows as connected");
 
+  // A guard whose checks fail says so; the project shows the issue. A report of no failures changes nothing.
+  assert.equal((await api(`/api/projects/${p.id}`, { cookie })).body.engineIssue ?? null, null);
+  assert.equal((await api("/api/agent/health", { headers: { "x-mcpwatch-key": "mw_wrong" }, method: "POST", body: { errors: 1 } })).status, 401);
+  await api("/api/agent/health", { headers: { "x-mcpwatch-key": p.key }, method: "POST", body: { errors: 0 } });
+  assert.equal((await api(`/api/projects/${p.id}`, { cookie })).body.engineIssue ?? null, null);
+  assert.equal((await api("/api/agent/health", { headers: { "x-mcpwatch-key": p.key }, method: "POST", body: { errors: 3, fail_open: false } })).status, 200);
+  const issue = (await api(`/api/projects/${p.id}`, { cookie })).body.engineIssue;
+  assert.equal(issue.errors, 3);
+  assert.equal(issue.failOpen, false);
+  assert.ok(Date.now() - Date.parse(issue.at) < 10_000, "stamped with the dashboard's clock");
+
   // 3. Deleting a project revokes its key.
   await api(`/api/projects/${p.id}`, { cookie, method: "DELETE" });
   assert.equal((await api("/api/agent/config", { headers: { "x-mcpwatch-key": p.key } })).status, 401);
   assert.equal((await api("/api/projects", { cookie })).body.length, 0);
 });
 
-test("dashboard: accounts, keys and events are never readable by other users", async (t) => {
+test("dashboard: accounts, keys and events are never readable by other users", { skip: NO_POSIX_MODES }, async (t) => {
   // Password hashes, live session tokens and project keys all live in the data dir, so nothing in it
   // may be group- or world-readable.
   const data = startDashboard(t);
@@ -149,7 +163,7 @@ test("dashboard: accounts, keys and events are never readable by other users", a
   for (const name of ["users.json", "sessions.json", "projects.json", `${p.id}.jsonl`]) assert.ok(found.includes(name), `${name} was written`);
 });
 
-test("dashboard: a data dir left world-readable by an older version is tightened at startup", async (t) => {
+test("dashboard: a data dir left world-readable by an older version is tightened at startup", { skip: NO_POSIX_MODES }, async (t) => {
   // mode on writeFileSync/mkdirSync only applies at creation, so an upgrade has to chmod what it finds.
   const data = mkdtempSync(path.join(os.tmpdir(), "mcpwatch-legacy-"));
   mkdirSync(path.join(data, "events"), { recursive: true });

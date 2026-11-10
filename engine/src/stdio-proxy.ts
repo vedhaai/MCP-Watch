@@ -35,7 +35,7 @@ export function runStdioProxy(policy: Policy, command: string, args: string[], r
       try {
         outcome = from === "client" ? await engine.fromClient(sessionId, msg) : await engine.fromServer(sessionId, msg);
       } catch (e) {
-        console.error(`[mcpwatch] guard error: ${(e as Error).message}`);
+        engine.noteFailure(e);
         if (policy.failOpen || msg.id === undefined || msg.method === undefined) outcome = { forward: msg, reply: null };
         else outcome = { forward: null, reply: { jsonrpc: "2.0", id: msg.id, error: { code: BLOCKED, message: "MCPWatch failed closed" } } };
       }
