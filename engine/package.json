@@ -1,6 +1,6 @@
 {
   "name": "@vedhaai/mcpwatch",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Security guard for MCP servers: middleware or proxy that scans every JSON-RPC message",
   "keywords": [
     "mcp",

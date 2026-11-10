@@ -1,6 +1,6 @@
 {
   "name": "@vedhaai/mcpwatch-dashboard",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "MCPWatch dashboard: projects, keys and the requests your MCP servers' guards report",
   "keywords": [
     "mcp",
