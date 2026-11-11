@@ -126,6 +126,44 @@ class HttpGuardTest {
 	}
 
 	@Test
+	@DisplayName("entries in a batch that are not messages are left exactly as they came")
+	void batchWithNonMessages(@TempDir Path temp) throws Exception {
+		try (Engine engine = TestEngine.start("java-http", "enforce", temp)) {
+			HttpGuard guard = new HttpGuard(engine, "/mcp");
+
+			// A null and a bare number are not JSON-RPC messages, so the rules have no say on them.
+			// They must survive untouched: dropping them, or writing a null in their place, would
+			// rewrite a client's batch into something it never sent.
+			RequestCheck nulls = guard.checkRequest("POST", headers(), utf8("[null]"), "127.0.0.1", false);
+			assertNull(nulls.reply());
+			assertFalse(nulls.refuse());
+			assertFalse(nulls.changed(), "there was nothing in it for the guard to change");
+			assertEquals("[null]", text(nulls.body()));
+
+			RequestCheck scalars = guard.checkRequest("POST", headers(), utf8("[1,2]"), "127.0.0.1", false);
+			assertFalse(scalars.changed());
+			assertEquals("[1,2]", text(scalars.body()));
+		}
+	}
+
+	@Test
+	@DisplayName("a real message in a batch is still judged alongside one that is not a message")
+	void batchMixesMessagesAndRubbish(@TempDir Path temp) throws Exception {
+		try (Engine engine = TestEngine.start("java-http", "enforce", temp)) {
+			HttpGuard guard = new HttpGuard(engine, "/mcp");
+			String body = "[null," + Json.write(TestEngine.toolCall(1, "read_file",
+					Map.of("path", "../../.ssh/id_rsa"))) + "]";
+
+			RequestCheck check = guard.checkRequest("POST", headers(), utf8(body), "127.0.0.1", false);
+
+			assertNotNull(check.reply(), "the blocked call still has to be answered");
+			List<Object> replies = Json.asArray(Json.parse(text(check.reply())));
+			assertEquals(1, replies.size(), "only the entry with an id gets an answer");
+			assertEquals(Engine.BLOCKED, TestEngine.errorCode(Json.asObject(replies.get(0))));
+		}
+	}
+
+	@Test
 	@DisplayName("a foreign Origin is refused before the application is reached")
 	void transportRuleRefusesGet(@TempDir Path temp) throws Exception {
 		try (Engine engine = TestEngine.start("java-http", temp,
@@ -201,6 +239,55 @@ class HttpGuardTest {
 
 			assertTrue(out.contains("MCPWatch"), "the event should carry the guard's notice, got: " + out);
 			assertFalse(out.contains("evil.example"), "the injection must not reach the model");
+		}
+	}
+
+	@Test
+	@DisplayName("an event ends at a blank line however its lines are terminated")
+	void sseMixedLineEndings(@TempDir Path temp) throws Exception {
+		try (Engine engine = TestEngine.start("java-http", "enforce", temp)) {
+			// SSE ends a line with CRLF, LF or a bare CR, so a blank line can be any two of them in
+			// a row. An event whose end is never recognised is an event that is never checked.
+			for (String boundary : List.of("\n\n", "\r\n\r\n", "\r\r", "\r\n\n", "\n\r\n", "\r\r\n")) {
+				HttpGuard guard = new HttpGuard(engine, "/mcp");
+				RequestCheck check = guard.checkRequest("POST", headers(),
+						utf8(Json.write(TestEngine.toolCall(1, "read_file", Map.of("path", "notes.txt")))),
+						"127.0.0.1", false);
+				ResponseFilter filter = guard.response(check, headers("content-type", "text/event-stream"), null);
+
+				String event = "data: " + Json.write(TestEngine.textResult(1, "all fine here")) + boundary;
+				String out = text(filter.feed(utf8(event)));
+
+				assertTrue(out.contains("all fine here"),
+						"not recognised with boundary " + boundary.replace("\r", "\\r").replace("\n", "\\n")
+								+ ", got: " + out);
+			}
+		}
+	}
+
+	@Test
+	@DisplayName("a CRLF split across two chunks does not corrupt the next event")
+	void sseBoundarySplitAcrossChunks(@TempDir Path temp) throws Exception {
+		try (Engine engine = TestEngine.start("java-http", "enforce", temp)) {
+			HttpGuard guard = new HttpGuard(engine, "/mcp");
+			RequestCheck check = guard.checkRequest("POST", headers(),
+					utf8(Json.write(List.of(TestEngine.toolCall(1, "read_file", Map.of("path", "a.txt")),
+							TestEngine.toolCall(2, "read_file", Map.of("path", "b.txt"))))),
+					"127.0.0.1", false);
+			ResponseFilter filter = guard.response(check, headers("content-type", "text/event-stream"), null);
+
+			// The chunk stops between the CR and the LF of the blank line. Treating that CR as a
+			// whole terminator would leave the LF to be read as the first character of event two.
+			String first = "data: " + Json.write(TestEngine.textResult(1, "first event")) + "\r\n\r";
+			String rest = "\n" + "data: " + Json.write(TestEngine.textResult(2, "second event")) + "\r\n\r\n";
+
+			String one = text(filter.feed(utf8(first)));
+			String two = text(filter.feed(utf8(rest)));
+
+			assertTrue(one.contains("first event"), "got: " + one);
+			assertTrue(two.contains("second event"), "the second event must survive the split, got: " + two);
+			assertTrue(two.startsWith("data:"),
+					"the orphaned LF must not open the second event with a blank line, got: " + two);
 		}
 	}
 

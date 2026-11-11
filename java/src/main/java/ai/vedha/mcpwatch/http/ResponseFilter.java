@@ -50,6 +50,9 @@ public final class ResponseFilter {
 
 	private final StringBuilder buffer = new StringBuilder();
 
+	/** The last chunk ended on a bare CR that closed an event; a following LF belongs to it. */
+	private boolean swallowLf;
+
 	ResponseFilter(HttpGuard guard, RequestCheck check, String contentType, HttpGuard.ReplyToServer replyToServer) {
 		this.guard = guard;
 		this.check = check;
@@ -99,12 +102,23 @@ public final class ResponseFilter {
 			return chunk;
 		}
 		decode(chunk, false);
+		// A boundary that ran to the end of the last chunk on a bare CR may have been half of a
+		// CRLF. Holding the event back to find out would stall the stream, so it went out and the
+		// LF is dropped here instead -- otherwise it reads as a blank line opening the next event.
+		if (this.swallowLf && this.buffer.length() > 0) {
+			if (this.buffer.charAt(0) == '\n') {
+				this.buffer.deleteCharAt(0);
+			}
+			this.swallowLf = false;
+		}
 		StringBuilder out = new StringBuilder();
 		int end;
 		while ((end = endOfEvent(this.buffer)) >= 0) {
 			int boundary = boundaryLength(this.buffer, end);
 			String event = this.buffer.substring(0, end);
+			boolean endedOnCr = this.buffer.charAt(end + boundary - 1) == '\r';
 			this.buffer.delete(0, end + boundary);
+			this.swallowLf = endedOnCr && this.buffer.length() == 0;
 			out.append(event(event));
 		}
 		return out.toString().getBytes(StandardCharsets.UTF_8);
@@ -149,34 +163,50 @@ public final class ResponseFilter {
 		}
 	}
 
-	/** The index where the next complete event ends, or -1 while it is still arriving. */
+	/**
+	 * The index where the next complete event ends, or -1 while it is still arriving.
+	 *
+	 * <p>SSE ends a line with CRLF, LF or <i>or</i> a bare CR, and an event at the first blank line,
+	 * so any two terminators in a row close one — including the mixed pairs that appear when a proxy
+	 * or a framework rewrites part of a stream. Matching only {@code \n\n}, {@code \r\n\r\n} and
+	 * {@code \r\r} left {@code \r\n\n} and {@code \n\r\n} unrecognised, and an event the guard never
+	 * sees the end of is an event it never checks.
+	 */
 	private static int endOfEvent(CharSequence text) {
-		for (int i = 0; i + 1 < text.length(); i++) {
-			char c = text.charAt(i);
-			if (c == '\n' && text.charAt(i + 1) == '\n') {
-				return i;
+		for (int i = 0; i < text.length(); i++) {
+			int first = terminatorAt(text, i);
+			if (first == 0) {
+				continue;
 			}
-			if (c == '\r' && text.charAt(i + 1) == '\n' && i + 3 < text.length() && text.charAt(i + 2) == '\r'
-					&& text.charAt(i + 3) == '\n') {
-				return i;
-			}
-			if (c == '\r' && text.charAt(i + 1) == '\r') {
+			if (terminatorAt(text, i + first) > 0) {
 				return i;
 			}
 		}
 		return -1;
 	}
 
-	private static int boundaryLength(CharSequence text, int at) {
-		if (text.charAt(at) == '\r' && at + 1 < text.length() && text.charAt(at + 1) == '\n') {
-			return 4;
+	/** The length of the line terminator at {@code at} — CRLF, LF or CR — or 0 if there is none. */
+	private static int terminatorAt(CharSequence text, int at) {
+		if (at >= text.length()) {
+			return 0;
 		}
-		return 2;
+		char c = text.charAt(at);
+		if (c == '\r') {
+			return at + 1 < text.length() && text.charAt(at + 1) == '\n' ? 2 : 1;
+		}
+		return c == '\n' ? 1 : 0;
+	}
+
+	/** The blank line that closed the event: the two terminators starting at {@code at}. */
+	private static int boundaryLength(CharSequence text, int at) {
+		int first = terminatorAt(text, at);
+		return first + terminatorAt(text, at + first);
 	}
 
 	/** One complete SSE event: note its id, check its data, and rebuild it if the guard changed it. */
 	private String event(String event) {
-		String[] lines = event.split("\r?\n", -1);
+		// Every terminator SSE allows, not just CRLF and LF: a bare CR separates lines too.
+		String[] lines = event.split("\r\n|\n|\r", -1);
 		StringBuilder data = new StringBuilder();
 		List<String> keep = new ArrayList<>();
 		for (String line : lines) {
