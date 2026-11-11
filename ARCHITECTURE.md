@@ -163,7 +163,7 @@ With a project key, the project's settings win over the guard's local options an
 | `~/.mcpwatch/scan-baseline.json` | `mcpwatch scan` | The accepted configs, for MS006 tampering |
 | memory | Each guard | Sessions, scores, call history, the AI cache. Reset on restart. |
 
-## Limits of this proof of concept
+## Known limits
 
 - **Trust on first use, unless you tighten it.** By default the first definition seen for a tool is pinned and trusted, so a server that is malicious from the start is never flagged by MW024, and a changed server name or version (MW038) is reported once and then accepted. `strictPins` stops new tools being pinned, and `MCPWATCH_PINS_KEY` signs the pin and registry files. Without the key, the files are only owner-only: anything running as the same user can edit them.
 - **One computer.** The dashboard listens on 127.0.0.1, so only guards on this machine can report to it.

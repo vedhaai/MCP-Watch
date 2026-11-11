@@ -121,5 +121,5 @@ function aiSummary(a: unknown): AiSummary | undefined {
   const verdict = (["allow", "suspicious", "block", "error"] as const).find((v) => v === s.verdict);
   if (!verdict) return undefined;
   return { model: String(s.model ?? "").slice(0, 100), verdict, ms: Number(s.ms) || 0, cached: s.cached === true || undefined,
-    error: s.error ? String(s.error).slice(0, 300) : undefined };
+    error: s.error ? String(s.error).slice(0, 300) : undefined, summary: s.summary ? String(s.summary).slice(0, 300) : undefined };
 }

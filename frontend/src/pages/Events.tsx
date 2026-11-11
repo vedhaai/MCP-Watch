@@ -169,6 +169,7 @@ function EventDetail({ e }: { e: McpEvent }) {
                 <span>{e.ai.model}</span>
                 <Typography component="span" sx={{ color: "text.secondary", fontSize: 13 }}>{e.ai.cached ? "cached" : `${e.ai.ms} ms`}{e.ai.error ? ` · ${e.ai.error}` : ""}</Typography>
               </Box>
+              {e.ai.summary && <Typography sx={{ fontSize: 13, mt: 1 }}>{e.ai.summary}</Typography>}
             </Box>
           )}
         </>

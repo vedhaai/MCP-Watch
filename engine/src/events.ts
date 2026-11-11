@@ -35,6 +35,8 @@ export interface AiSummary {
   ms: number;
   cached?: boolean;
   error?: string;
+  // One plain sentence from the model on what the message does.
+  summary?: string;
 }
 
 export interface EventSink {

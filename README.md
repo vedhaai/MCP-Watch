@@ -1,4 +1,4 @@
-# MCPWatch (POC)
+# MCPWatch
 
 A security guard for MCP servers. It checks every JSON-RPC message between any MCP client and your server, in both directions. You manage it from a dashboard. It works the way Headerwatch does for APIs:
 1. Create a project in the dashboard.

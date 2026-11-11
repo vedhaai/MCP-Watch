@@ -66,5 +66,5 @@ One package: `npm test -w engine`, `npm run build -w backend`, etc. Tests are `*
 ## Current state (as of 2026-11-10)
 
 - Branch `develop`, working tree clean, latest merge is PR #14 (engine-security: engine, dashboard link and stored-secrets hardening).
-- Engine version 0.3.1. Status is labelled POC in the README.
+- Engine version 0.3.1.
 - Never include customer PII in code, docs, fixtures or commit messages (organization policy).
