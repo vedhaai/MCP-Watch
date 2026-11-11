@@ -197,11 +197,7 @@ export class Engine {
   async fromClient(sessionId: string, msg: Msg, http?: HttpInfo): Promise<Outcome> {
     if (this.policy.mode === "off") return { forward: msg, reply: null };
     const s = this.session(sessionId);
-    if (isResponse(msg)) {
-      s.pendingFromServer.delete(msg.id);
-      return { forward: msg, reply: null };
-    }
-    if (!isRequest(msg)) return { forward: msg, reply: null };
+    if (!isRequest(msg)) return this.clientOther(s, msg);
 
     const method: string = msg.method;
     const params = msg.params ?? {};
@@ -250,11 +246,14 @@ export class Engine {
       ai = await this.review(s, findings, { kind: "tool-call", label: "resources/read", content: { uri: params.uri } });
     } else if (method === "prompts/get") {
       ai = await this.review(s, findings, { kind: "tool-call", label: `prompts/get ${params.name}`, content: { prompt: params.name, arguments: params.arguments ?? {} } });
+    } else {
+      // Every other request (initialize, ping, list requests, completion/complete, …) is read too.
+      ai = await this.review(s, findings, { kind: "tool-call", label: method, content: params });
     }
 
     const { action, enforceAction, clientRule } = this.decide(s, findings);
     const quiet = method === "ping" || method === "tools/list" || method === "resources/list" || method === "prompts/list";
-    if (!quiet || findings.length) {
+    if (!quiet || findings.length || ai) {
       this.emit(s, {
         direction: "client->server", method, tool, id: msg.id, action, enforceAction, findings, clientRule, ai,
         snippet: method === "tools/call" ? snippet(params.arguments) : method === "initialize" ? s.client : snippet(params),
@@ -273,6 +272,39 @@ export class Engine {
     }
     s.pendingFromClient.set(msg.id, { method, tool, t: Date.now() });
     return { forward: msg, reply: null };
+  }
+
+  // The client's replies to server requests (sampling, elicitation, roots) and its notifications.
+  // No rule covers them, so the AI reads them; it can only add findings.
+  private async clientOther(s: Session, msg: Msg): Promise<Outcome> {
+    const reply = isResponse(msg);
+    let method: string = reply ? "response" : String(msg.method ?? "notification");
+    if (reply) {
+      method = `${s.pendingFromServer.get(msg.id)?.method ?? "response"} reply`;
+      s.pendingFromServer.delete(msg.id);
+    }
+    const findings: Finding[] = [];
+    const content = reply ? (msg.error ?? msg.result ?? {}) : (msg.params ?? {});
+    const ai = await this.review(s, findings, { kind: "tool-call", label: method, content });
+    if (!ai) return { forward: msg, reply: null };
+    const { action, enforceAction, clientRule } = this.decide(s, findings);
+    this.emit(s, { direction: "client->server", method, id: msg.id, action, enforceAction, findings, clientRule, ai, snippet: snippet(content) });
+    if (action !== "block") return { forward: msg, reply: null };
+    // A reply can't be answered with an error, so the server gets an error in its place; a notification is dropped.
+    const error = { jsonrpc: "2.0", id: msg.id, error: { code: BLOCKED, message: `Withheld by MCPWatch: ${titles(findings)}` } };
+    return { forward: reply ? error : null, reply: null };
+  }
+
+  // Server messages no dedicated check covers (list results, errors, notifications, …) still get the AI's read.
+  // Returns the message to forward, or null to drop it.
+  private async serverOther(s: Session, msg: Msg, method: string, content: unknown, findings: Finding[] = [], tool?: string, always = false): Promise<Msg | null> {
+    const ai = await this.review(s, findings, { kind: "server-output", label: method, content });
+    if (!ai && !findings.length && !always) return msg;
+    const enforceAction: Action = findings.some((f) => f.severity === "high") ? "block" : "allow";
+    const action = this.act(enforceAction);
+    this.emit(s, { direction: "server->client", method, tool, id: msg.id, action, enforceAction, findings, ai, snippet: snippet(content) });
+    if (action !== "block") return msg;
+    return msg.id === undefined ? null : { jsonrpc: "2.0", id: msg.id, error: { code: BLOCKED, message: `Withheld by MCPWatch: ${titles(findings)}` } };
   }
 
   // HTTP requests without a JSON-RPC body (the GET event stream, DELETE to end a session) only go
@@ -303,10 +335,8 @@ export class Engine {
     const s = this.session(sessionId);
     if (isRequest(msg)) return this.serverRequest(s, msg);
     if (!isResponse(msg)) {
-      if (msg.method === "notifications/tools/list_changed") {
-        this.emit(s, { direction: "server->client", method: msg.method, action: "allow", enforceAction: "allow", findings: [] });
-      }
-      return { forward: msg, reply: null };
+      const note = await this.serverOther(s, msg, msg.method, msg.params ?? {}, [], undefined, msg.method === "notifications/tools/list_changed");
+      return { forward: note, reply: null };
     }
 
     const pending = s.pendingFromClient.get(msg.id);
@@ -317,7 +347,9 @@ export class Engine {
       this.emit(s, { direction: "server->client", method: "response", id: msg.id, action, enforceAction: "block", findings });
       return { forward: action === "block" ? null : msg, reply: null };
     }
-    if (!pending || msg.error || !msg.result) return { forward: msg, reply: null };
+    if (!pending) return { forward: await this.serverOther(s, msg, "response", msg.error ?? msg.result ?? {}), reply: null };
+    if (msg.error) return { forward: await this.serverOther(s, msg, `${pending.method} error`, msg.error, [], pending.tool), reply: null };
+    if (!msg.result) return { forward: msg, reply: null };
 
     // MW023: a response too big for the client's context.
     const size = JSON.stringify(msg.result).length;
@@ -332,7 +364,7 @@ export class Engine {
 
     switch (pending.method) {
       case "initialize":
-        return { forward: this.initialized(s, msg), reply: null };
+        return { forward: await this.initialized(s, msg), reply: null };
       case "tools/list":
         return { forward: await this.toolsList(s, msg), reply: null };
       case "tools/call":
@@ -342,18 +374,23 @@ export class Engine {
       case "prompts/get":
         return { forward: await this.serverContent(s, msg, pending.method, undefined, ["messages", "description"]), reply: null };
       default:
-        return { forward: msg, reply: null };
+        return { forward: await this.serverOther(s, msg, pending.method, msg.result, [], pending.tool), reply: null };
     }
   }
 
   // MW038: the server now reports a different name or version than the one pinned for it.
-  private initialized(s: Session, msg: Msg): Msg {
+  // The pin finding alone never blocks; a high finding the AI adds can.
+  private async initialized(s: Session, msg: Msg): Promise<Msg> {
     const pin = this.pins.checkServer(msg.result.serverInfo ?? {});
-    if (pin.status === "changed") {
-      const findings = [finding("MW038", `Server was ${pin.was}, is now ${pin.now}; review the update`, "result.serverInfo")];
-      this.emit(s, { direction: "server->client", method: "initialize", id: msg.id, action: "allow", enforceAction: "allow", findings, snippet: pin.now });
-    }
-    return msg;
+    const findings: Finding[] = pin.status === "changed"
+      ? [finding("MW038", `Server was ${pin.was}, is now ${pin.now}; review the update`, "result.serverInfo")] : [];
+    const pinned = findings.length;
+    const ai = await this.review(s, findings, { kind: "server-output", label: "initialize result", content: msg.result });
+    if (!ai && !pinned) return msg;
+    const enforceAction: Action = findings.slice(pinned).some((f) => f.severity === "high") ? "block" : "allow";
+    const action = this.act(enforceAction);
+    this.emit(s, { direction: "server->client", method: "initialize", id: msg.id, action, enforceAction, findings, ai, snippet: pin.status === "changed" ? pin.now : snippet(msg.result.serverInfo ?? {}) });
+    return action === "block" ? { jsonrpc: "2.0", id: msg.id, error: { code: BLOCKED, message: `Withheld by MCPWatch: ${titles(findings)}` } } : msg;
   }
 
   private async toolsList(s: Session, msg: Msg): Promise<Msg> {

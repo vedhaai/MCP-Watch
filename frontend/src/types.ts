@@ -32,7 +32,7 @@ export interface McpEvent {
   score: number;
   findings: Finding[];
   snippet?: string;
-  ai?: { model: string; verdict: string; ms: number; cached?: boolean; error?: string };
+  ai?: { model: string; verdict: string; ms: number; cached?: boolean; error?: string; summary?: string };
 }
 
 export interface Project {
