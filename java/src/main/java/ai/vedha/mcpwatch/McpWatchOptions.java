@@ -134,8 +134,8 @@ public final class McpWatchOptions {
 		}
 
 		/**
-		 * What to do when the engine can't be reached: true (the default) passes messages through,
-		 * false refuses requests with a JSON-RPC error.
+		 * What to do when the engine can't be reached: false (the default, as in the Node engine)
+		 * refuses requests with a JSON-RPC error, true passes messages through unchecked.
 		 */
 		public Builder failOpen(boolean failOpen) {
 			return put("failOpen", failOpen);

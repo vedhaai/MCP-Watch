@@ -91,6 +91,16 @@ class McpWatchFilterTest {
 			out.setContentType("text/plain");
 			out.getOutputStream().write("stream".getBytes(StandardCharsets.UTF_8));
 		}
+
+		/** Not part of MCP, but the filter may be mapped over a path the application also uses. */
+		@Override
+		protected void doPut(HttpServletRequest request, HttpServletResponse out) throws IOException {
+			this.calls.incrementAndGet();
+			this.lastBody.set(new String(request.getInputStream().readAllBytes(), StandardCharsets.UTF_8));
+			out.setStatus(200);
+			out.setContentType("text/plain");
+			out.getOutputStream().write("stored".getBytes(StandardCharsets.UTF_8));
+		}
 	}
 
 	private FakeMcpServlet servlet;
@@ -254,6 +264,77 @@ class McpWatchFilterTest {
 
 		assertEquals(1, this.servlet.calls.get());
 		assertEquals("this is not json", this.servlet.lastBody.get());
+	}
+
+	@Test
+	@DisplayName("a request that is not a POST keeps its own body")
+	void nonPostBodyIsNotEaten(@TempDir Path temp) throws Exception {
+		startServer(TestEngine.start("java-filter", "enforce", temp));
+
+		HttpRequest request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + this.port + "/mcp/thing"))
+			.timeout(Duration.ofSeconds(30))
+			.header("content-type", "text/plain")
+			.PUT(HttpRequest.BodyPublishers.ofString("the payload"))
+			.build();
+		HttpResponse<String> response = HttpClient.newHttpClient()
+			.send(request, HttpResponse.BodyHandlers.ofString());
+
+		assertEquals(200, response.statusCode());
+		assertEquals(1, this.servlet.calls.get());
+		// Only a POST carries client messages. Reading any other body here would hand the
+		// application an empty stream, silently losing whatever the client actually sent.
+		assertEquals("the payload", this.servlet.lastBody.get(), "the application must still get its body");
+	}
+
+	@Test
+	@DisplayName("a batch holding a JSON null is not a way to crash the guard")
+	void nullInsideABatchIsSurvived(@TempDir Path temp) throws Exception {
+		startServer(TestEngine.start("java-filter", "enforce", temp));
+
+		HttpResponse<String> response = post("/mcp", "[null]");
+
+		assertEquals(200, response.statusCode(), "an unauthenticated POST must not be able to raise a 500");
+		assertEquals(1, this.servlet.calls.get());
+		assertEquals("[null]", this.servlet.lastBody.get(), "nothing in it was the guard's to change");
+	}
+
+	@Test
+	@DisplayName("the transport rules can be switched on from web.xml init parameters alone")
+	void transportRulesFromInitParameters(@TempDir Path temp) throws Exception {
+		TestEngine.requireEngine();
+		this.servlet = new FakeMcpServlet();
+		ServletContextHandler context = new ServletContextHandler();
+		context.setContextPath("/");
+		context.addServlet(new ServletHolder(this.servlet), "/mcp/*");
+
+		// No McpWatchOptions: exactly what a web.xml or @WebFilter deployment can express. The
+		// servlet chain is the only place the headers MW030-MW036 judge are still available, so
+		// these parameters have to exist for such a deployment to use those rules at all.
+		FilterHolder holder = new FilterHolder(new McpWatchFilter());
+		holder.setInitParameter("name", "init-param-test");
+		holder.setInitParameter("path", "/mcp");
+		holder.setInitParameter("mode", "enforce");
+		holder.setInitParameter("allowedOrigins", "https://app.example.com, https://other.example.com");
+		context.addFilter(holder, "/*", EnumSet.of(DispatcherType.REQUEST));
+
+		this.server = new Server();
+		ServerConnector connector = new ServerConnector(this.server);
+		connector.setPort(0);
+		this.server.addConnector(connector);
+		this.server.setHandler(context);
+		this.server.start();
+		this.port = connector.getLocalPort();
+		this.engine = ((McpWatchFilter) holder.getFilter()).engine();
+
+		HttpResponse<String> refused = get("/mcp", "origin", "https://evil.example");
+		assertEquals(403, refused.statusCode(), "the origin allow-list must have reached the engine");
+		assertEquals(0, this.servlet.calls.get());
+
+		// Also proves the engine really started: with none, every request fails closed to 403 and
+		// the allow-list would look like it worked when nothing had been read at all.
+		HttpResponse<String> allowed = get("/mcp", "origin", "https://other.example.com");
+		assertEquals(200, allowed.statusCode(), "a listed origin, after the comma, must be let through");
+		assertEquals(1, this.servlet.calls.get());
 	}
 
 	@Test

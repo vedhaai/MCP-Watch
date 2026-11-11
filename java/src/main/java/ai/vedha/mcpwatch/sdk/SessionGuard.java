@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import ai.vedha.mcpwatch.Engine;
 import ai.vedha.mcpwatch.Json;
@@ -36,6 +37,8 @@ final class SessionGuard {
 	private final Sequencer outbound = new Sequencer();
 
 	private final String connectionId = "conn-" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+
+	private final AtomicBoolean dropped = new AtomicBoolean();
 
 	private volatile McpServerSession session;
 
@@ -70,9 +73,15 @@ final class SessionGuard {
 		return this.engine;
 	}
 
-	/** The connection has gone: the engine can forget its session state. */
+	/**
+	 * The connection has gone: the engine can forget its session state. Only the first call counts —
+	 * the transport's {@code close()} and {@code closeGracefully()} may both run for one connection,
+	 * and a second drop would be a round trip about a session the engine has already forgotten.
+	 */
 	void closed() {
-		this.engine.dropSession(this.sessionId);
+		if (this.dropped.compareAndSet(false, true)) {
+			this.engine.dropSession(this.sessionId);
+		}
 	}
 
 	// ---- checks ----------------------------------------------------------------------------------

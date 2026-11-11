@@ -136,4 +136,53 @@ class JsonTest {
 	void whitespace() {
 		assertEquals(Map.of("a", List.of(1L)), Json.parse(" { \"a\" : [ 1 ] } "));
 	}
+
+	@Test
+	@DisplayName("slightly off numbers are read, because refusing one would skip the whole message")
+	void lenientNumbersAreDeliberate() {
+		// A body the parser refuses is handed to the application unchecked, so being stricter than
+		// the application's own parser would be a way past the guard. Pinned so nobody "corrects"
+		// this into a bypass; see the note on Json.Parser.number().
+		assertEquals(5L, Json.parse("+5"));
+		assertEquals(1L, Json.parse("01"));
+		assertEquals(0.5, Json.parse(".5"));
+		assertEquals(Map.of("id", 1L), Json.parse("{\"id\":01}"));
+
+		// Rubbish that holds no number at all is still refused.
+		for (String bad : List.of("1.2.3", "--1", "1e", "1-2", "-", "+")) {
+			assertThrows(Json.JsonException.class, () -> Json.parse(bad), "should refuse: " + bad);
+		}
+	}
+
+	@Test
+	@DisplayName("an array holding a null is written, not thrown over")
+	void arrayWithNull() {
+		// A JSON null is an ordinary value, and an engine request is assembled from arrays the
+		// caller supplies; refusing one would take the guard down instead of the message.
+		assertEquals("[null]", Json.write(new Object[] { null }));
+		assertEquals("[1,null,\"a\"]", Json.write(new Object[] { 1, null, "a" }));
+		assertEquals("[null]", Json.write(java.util.Collections.singletonList(null)));
+		Map<String, Object> message = new LinkedHashMap<>();
+		message.put("id", null);
+		assertEquals("{\"id\":null}", Json.write(message));
+	}
+
+	@Test
+	@DisplayName("a half surrogate survives the trip to the engine instead of becoming a question mark")
+	void loneSurrogate() {
+		// Written raw it is not encodable in UTF-8 and reaches the engine as "?", so the rules would
+		// judge a different string from the one the application goes on to see.
+		String parsed = (String) Json.parse("\"\\ud83d\"");
+		String written = Json.write(parsed);
+		assertEquals("\"\\ud83d\"", written);
+		String overTheWire = new String(written.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+				java.nio.charset.StandardCharsets.UTF_8);
+		assertEquals(parsed, Json.parse(overTheWire), "the engine must see the string the guard read");
+
+		// A real pair is still a character, and stays one.
+		String pair = (String) Json.parse("\"\\ud83d\\ude00\"");
+		assertEquals(2, pair.length());
+		assertEquals(pair, Json.parse(Json.write(pair)));
+		assertTrue(Json.write(pair).contains("\uD83D\uDE00"), "a whole emoji needs no escaping");
+	}
 }

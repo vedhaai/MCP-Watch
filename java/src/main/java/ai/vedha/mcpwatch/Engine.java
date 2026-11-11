@@ -18,6 +18,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.ReentrantLock;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -60,17 +61,40 @@ public final class Engine implements AutoCloseable {
 
 	private final AtomicLong ids = new AtomicLong();
 
-	private final Map<Long, CompletableFuture<Map<String, Object>>> pending = new ConcurrentHashMap<>();
+	/**
+	 * What is waiting on the engine that is running now. Each start gets a fresh map, so a crashed
+	 * engine's reader thread can only ever fail the calls that were made to <i>it</i>: it must not
+	 * cancel the handshake or the messages already queued against its replacement.
+	 */
+	private volatile Map<Long, CompletableFuture<Map<String, Object>>> pending = new ConcurrentHashMap<>();
 
-	private final Object lock = new Object();
+	/**
+	 * Held to start the engine and to write one request to it, so lines never interleave on the pipe.
+	 *
+	 * <p>A {@link ReentrantLock} rather than {@code synchronized} so that waiting for it can be given
+	 * up on: a restart waits for the engine's handshake, which may take the whole start timeout, and
+	 * every message arriving meanwhile would otherwise block for exactly as long. A guard that stops
+	 * answering is worse than one that refuses — a caller that cannot get in now fails, and
+	 * {@code failOpen} decides what that means, the same as any other engine failure.
+	 */
+	private final ReentrantLock lock = new ReentrantLock();
 
-	private Process process;
+	private volatile Process process;
 
 	private Writer toEngine;
 
 	private long lastStart;
 
-	private long lastWarning;
+	/**
+	 * Not under {@link #lock}: a thread whose check already failed must not queue behind a start.
+	 *
+	 * <p>Started a full window in the past because {@code nanoTime()} has an arbitrary origin and may
+	 * be negative; from a plain zero the very first guard error would be swallowed, which is the one
+	 * that matters most.
+	 */
+	private final AtomicLong lastWarning = new AtomicLong(System.nanoTime() - TimeUnit.SECONDS.toNanos(61));
+
+	private volatile boolean closed;
 
 	private volatile String mode;
 
@@ -205,12 +229,19 @@ public final class Engine implements AutoCloseable {
 
 	/** Starts the engine now rather than on the first message (that one would wait for it). */
 	public void start() {
-		synchronized (this.lock) {
+		this.lock.lock();
+		try {
 			ensureStarted();
+		}
+		finally {
+			this.lock.unlock();
 		}
 	}
 
 	private Process ensureStarted() {
+		if (this.closed) {
+			throw new EngineUnavailableException("the guard has been closed");
+		}
 		if (this.process != null) {
 			if (this.process.isAlive()) {
 				return this.process;
@@ -234,14 +265,18 @@ public final class Engine implements AutoCloseable {
 			throw new EngineUnavailableException("could not start " + command.get(0) + ": " + e.getMessage(), e);
 		}
 
-		// Anything still waiting belonged to the engine that just died.
-		failPending(new EngineUnavailableException("the engine was restarted"));
+		// Anything still waiting belonged to the engine that just died. It gets its own map, so
+		// nothing registered against the new engine below can be caught up in failing it.
+		Map<Long, CompletableFuture<Map<String, Object>>> dead = this.pending;
+		Map<Long, CompletableFuture<Map<String, Object>>> fresh = new ConcurrentHashMap<>();
+		this.pending = fresh;
+		failPending(dead, new EngineUnavailableException("the engine was restarted"));
 		CompletableFuture<Map<String, Object>> ready = new CompletableFuture<>();
-		this.pending.put(0L, ready);
+		fresh.put(0L, ready);
 		this.process = started;
 		this.toEngine = new OutputStreamWriter(started.getOutputStream(), StandardCharsets.UTF_8);
 
-		Thread reader = new Thread(() -> read(started), "mcpwatch-engine");
+		Thread reader = new Thread(() -> read(started, fresh), "mcpwatch-engine");
 		reader.setDaemon(true);
 		reader.start();
 
@@ -264,7 +299,8 @@ public final class Engine implements AutoCloseable {
 		return started;
 	}
 
-	private void read(Process process) {
+	/** One engine's output, answering only the calls made to that same engine. */
+	private void read(Process process, Map<Long, CompletableFuture<Map<String, Object>>> waiting) {
 		try (BufferedReader lines = new BufferedReader(
 				new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
 			String line;
@@ -275,9 +311,9 @@ public final class Engine implements AutoCloseable {
 				}
 				Object id = answer.get("id");
 				if (id instanceof Number) {
-					CompletableFuture<Map<String, Object>> waiting = this.pending.remove(((Number) id).longValue());
-					if (waiting != null) {
-						waiting.complete(answer);
+					CompletableFuture<Map<String, Object>> call = waiting.remove(((Number) id).longValue());
+					if (call != null) {
+						call.complete(answer);
 					}
 				}
 			}
@@ -293,20 +329,34 @@ public final class Engine implements AutoCloseable {
 			Thread.currentThread().interrupt();
 			code = -1;
 		}
-		failPending(new EngineUnavailableException("the engine exited (code " + code + ")"));
+		failPending(waiting, new EngineUnavailableException("the engine exited (code " + code + ")"));
 	}
 
-	private void failPending(RuntimeException cause) {
-		for (Long id : List.copyOf(this.pending.keySet())) {
-			CompletableFuture<Map<String, Object>> waiting = this.pending.remove(id);
-			if (waiting != null) {
-				waiting.completeExceptionally(cause);
+	private static void failPending(Map<Long, CompletableFuture<Map<String, Object>>> waiting, RuntimeException cause) {
+		for (Long id : List.copyOf(waiting.keySet())) {
+			CompletableFuture<Map<String, Object>> call = waiting.remove(id);
+			if (call != null) {
+				call.completeExceptionally(cause);
 			}
 		}
 	}
 
 	private CompletableFuture<Map<String, Object>> send(String op, Map<String, Object> fields) {
-		synchronized (this.lock) {
+		long waitMs = this.options.callTimeout().toMillis();
+		boolean held;
+		try {
+			held = this.lock.tryLock(waitMs, TimeUnit.MILLISECONDS);
+		}
+		catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			throw new EngineUnavailableException("interrupted while waiting for the engine", e);
+		}
+		if (!held) {
+			// Another thread is starting the engine and is taking longer than this caller is willing
+			// to wait for an answer at all.
+			throw new EngineUnavailableException("the engine was busy for " + waitMs + " ms");
+		}
+		try {
 			ensureStarted();
 			long id = this.ids.incrementAndGet();
 			Map<String, Object> request = new LinkedHashMap<>();
@@ -314,17 +364,21 @@ public final class Engine implements AutoCloseable {
 			request.put("op", op);
 			request.putAll(fields);
 			CompletableFuture<Map<String, Object>> answer = new CompletableFuture<>();
-			this.pending.put(id, answer);
+			Map<Long, CompletableFuture<Map<String, Object>>> waiting = this.pending;
+			waiting.put(id, answer);
 			try {
 				this.toEngine.write(Json.write(request));
 				this.toEngine.write("\n");
 				this.toEngine.flush();
 			}
 			catch (IOException e) {
-				this.pending.remove(id);
+				waiting.remove(id);
 				throw new EngineUnavailableException("the engine stopped: " + e.getMessage(), e);
 			}
 			return answer;
+		}
+		finally {
+			this.lock.unlock();
 		}
 	}
 
@@ -352,21 +406,43 @@ public final class Engine implements AutoCloseable {
 		}
 	}
 
-	/** Lets the engine send its queued events and exit. */
+	/**
+	 * Lets the engine send its queued events and exit.
+	 *
+	 * <p>Closing its stdin is what tells the engine to flush, and that needs the lock. If a start is
+	 * in flight and will not give the lock up promptly, shutting the host application down matters
+	 * more than those last queued events, so the engine is simply killed.
+	 */
 	@Override
 	public void close() {
-		Process running;
-		synchronized (this.lock) {
-			running = this.process;
-			if (running == null || !running.isAlive()) {
-				return;
+		this.closed = true;
+		boolean held;
+		try {
+			held = this.lock.tryLock(5, TimeUnit.SECONDS);
+		}
+		catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			held = false;
+		}
+		Process running = this.process;
+		if (running == null || !running.isAlive()) {
+			if (held) {
+				this.lock.unlock();
 			}
-			try {
-				this.toEngine.close();
-			}
-			catch (IOException e) {
-				// Closing the pipe is what tells the engine to flush; it may already be gone.
-			}
+			return;
+		}
+		if (!held) {
+			running.destroyForcibly();
+			return;
+		}
+		try {
+			this.toEngine.close();
+		}
+		catch (IOException e) {
+			// Closing the pipe is what tells the engine to flush; it may already be gone.
+		}
+		finally {
+			this.lock.unlock();
 		}
 		try {
 			if (!running.waitFor(5, TimeUnit.SECONDS)) {
@@ -383,11 +459,11 @@ public final class Engine implements AutoCloseable {
 
 	private Outcome failed(Map<String, Object> message, RuntimeException cause) {
 		long now = System.nanoTime();
-		synchronized (this.lock) {
-			if (now - this.lastWarning > TimeUnit.SECONDS.toNanos(60)) {
-				this.lastWarning = now;
-				log.error("[mcpwatch] guard error: {}", cause.getMessage());
-			}
+		long last = this.lastWarning.get();
+		// No lock: a check that has already failed must not then wait on a start that may take the
+		// whole start timeout, and losing a race here only costs one duplicate log line.
+		if (now - last > TimeUnit.SECONDS.toNanos(60) && this.lastWarning.compareAndSet(last, now)) {
+			log.error("[mcpwatch] guard error: {}", cause.getMessage());
 		}
 		boolean isRequest = message != null && message.get("id") != null && message.get("method") != null;
 		if (this.options.isFailOpen() || !isRequest) {

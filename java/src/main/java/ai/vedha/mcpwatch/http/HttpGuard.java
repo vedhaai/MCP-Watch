@@ -5,6 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Predicate;
 
 import ai.vedha.mcpwatch.Engine;
@@ -105,12 +106,15 @@ public final class HttpGuard {
 		List<Object> batch = Json.asArray(parsed);
 		List<Object> messages = batch != null ? batch : List.of(parsed);
 
-		List<Map<String, Object>> forwards = new ArrayList<>();
+		List<Object> forwards = new ArrayList<>();
 		List<Map<String, Object>> replies = new ArrayList<>();
 		for (Object message : messages) {
 			Map<String, Object> asObject = Json.asObject(message);
 			if (asObject == null) {
-				forwards.add(null);
+				// Not a JSON-RPC message (a null or a bare number in a batch). The rules get no say on
+				// it, so keep it exactly as it came rather than dropping it or writing a null in its
+				// place, and let the application's own parser reject it.
+				forwards.add(message);
 				continue;
 			}
 			Engine.Outcome outcome = this.engine.fromClient(session, asObject, info);
@@ -168,12 +172,13 @@ public final class HttpGuard {
 		return reply;
 	}
 
-	private static boolean sameMessages(List<Object> before, List<Map<String, Object>> after) {
+	private static boolean sameMessages(List<Object> before, List<Object> after) {
 		if (before.size() != after.size()) {
 			return false;
 		}
 		for (int i = 0; i < before.size(); i++) {
-			if (!before.get(i).equals(after.get(i))) {
+			// Objects.equals: a batch may legitimately contain a JSON null on either side.
+			if (!Objects.equals(before.get(i), after.get(i))) {
 				return false;
 			}
 		}

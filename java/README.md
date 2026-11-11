@@ -105,7 +105,7 @@ new McpWatchFilter("my-tools", options, "/mcp", "/sse");   // two endpoints
 new McpWatchFilter(engine, "/mcp");                        // share an engine with an SDK server
 ```
 
-In `web.xml` or with `@WebFilter`, everything comes from init parameters instead — `name`, `path` (comma-separated), `projectKey`, `server`, `mode`, `denyTools`, `failOpen`, `enabled`:
+In `web.xml` or with `@WebFilter`, everything comes from init parameters instead — `name`, `path`, `projectKey`, `server`, `mode`, `denyTools`, `allowTools`, `allowedOrigins`, `allowedHosts`, `requireAuth`, `expectedAudience`, `failOpen`, `enabled`. `path`, `denyTools`, `allowTools`, `allowedOrigins` and `allowedHosts` take a comma-separated list:
 
 ```xml
 <filter>
@@ -113,6 +113,9 @@ In `web.xml` or with `@WebFilter`, everything comes from init parameters instead
   <filter-class>ai.vedha.mcpwatch.http.McpWatchFilter</filter-class>
   <init-param><param-name>projectKey</param-name><param-value>mw_...</param-value></init-param>
   <init-param><param-name>path</param-name><param-value>/mcp</param-value></init-param>
+  <!-- The transport rules: only the servlet chain still sees the headers they judge. -->
+  <init-param><param-name>allowedOrigins</param-name><param-value>https://app.example.com</param-value></init-param>
+  <init-param><param-name>requireAuth</param-name><param-value>true</param-value></init-param>
 </filter>
 <filter-mapping>
   <filter-name>mcpwatch</filter-name>
@@ -328,4 +331,4 @@ mvn test
 
 ## Licence
 
-ISC, as the rest of MCP-Watch. See [LICENSE](LICENSE).
+MIT, as the rest of MCP-Watch. See [LICENSE](LICENSE).
