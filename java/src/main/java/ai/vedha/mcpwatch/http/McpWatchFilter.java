@@ -54,8 +54,12 @@ import org.slf4j.LoggerFactory;
  * }
  * }</pre>
  *
- * <p>Or in {@code web.xml} / {@code @WebFilter}, with {@code projectKey}, {@code mode},
- * {@code path} and {@code name} as init parameters.
+ * <p>Or in {@code web.xml} / {@code @WebFilter}, with init parameters instead: {@code name},
+ * {@code path} (comma-separated), {@code projectKey}, {@code server}, {@code mode},
+ * {@code denyTools}, {@code allowTools}, {@code allowedOrigins}, {@code allowedHosts},
+ * {@code requireAuth}, {@code expectedAudience}, {@code failOpen} and {@code enabled}. The list
+ * parameters are comma-separated. Passing {@link McpWatchOptions} to the constructor instead makes
+ * every init parameter but {@code name} and {@code path} be ignored.
  *
  * <p><b>One limit.</b> When the guard refuses a request the <i>server</i> sent the client (a
  * sampling or elicitation request, MW026 / MW029), the servlet API gives no way to hand the server
@@ -107,13 +111,7 @@ public class McpWatchFilter implements Filter {
 			this.name = param(config, "name", this.name);
 			String path = param(config, "path", null);
 			if (path != null) {
-				List<String> parsed = new ArrayList<>();
-				for (String part : path.split(",")) {
-					if (!part.isBlank()) {
-						parsed.add(part.trim());
-					}
-				}
-				this.paths = parsed;
+				this.paths = List.of(list(path));
 			}
 			this.options = fromInitParameters(config, this.options);
 		}
@@ -148,7 +146,30 @@ public class McpWatchFilter implements Filter {
 		}
 		String denyTools = param(config, "denyTools", null);
 		if (denyTools != null) {
-			builder.denyTools(denyTools.split("\\s*,\\s*"));
+			builder.denyTools(list(denyTools));
+		}
+		String allowTools = param(config, "allowTools", null);
+		if (allowTools != null) {
+			builder.allowTools(list(allowTools));
+		}
+		// The transport rules (MW030-MW036). These matter most here: the servlet chain is the only
+		// place the request headers they judge are still available, so a filter configured purely
+		// from web.xml had no way to switch them on at all.
+		String allowedOrigins = param(config, "allowedOrigins", null);
+		if (allowedOrigins != null) {
+			builder.allowedOrigins(list(allowedOrigins));
+		}
+		String allowedHosts = param(config, "allowedHosts", null);
+		if (allowedHosts != null) {
+			builder.allowedHosts(list(allowedHosts));
+		}
+		String requireAuth = param(config, "requireAuth", null);
+		if (requireAuth != null) {
+			builder.requireAuth(Boolean.parseBoolean(requireAuth));
+		}
+		String expectedAudience = param(config, "expectedAudience", null);
+		if (expectedAudience != null) {
+			builder.expectedAudience(expectedAudience);
 		}
 		String failOpen = param(config, "failOpen", null);
 		if (failOpen != null) {
@@ -159,6 +180,18 @@ public class McpWatchFilter implements Filter {
 			builder.enabled(Boolean.parseBoolean(enabled));
 		}
 		return builder.build();
+	}
+
+	/** A comma-separated init parameter. Blank entries are dropped: a trailing comma is a typo. */
+	private static String[] list(String value) {
+		List<String> out = new ArrayList<>();
+		for (String part : value.split(",")) {
+			String trimmed = part.trim();
+			if (!trimmed.isEmpty()) {
+				out.add(trimmed);
+			}
+		}
+		return out.toArray(new String[0]);
 	}
 
 	/** The engine this filter guards with, or null when MCPWatch is off. */
@@ -186,7 +219,10 @@ public class McpWatchFilter implements Filter {
 			return;
 		}
 
-		byte[] body = "POST".equalsIgnoreCase(http.getMethod()) ? readBody(http) : new byte[0];
+		// Only a POST carries client messages, so only a POST has its body read here. Anything else
+		// keeps its own stream: reading it would leave the application an empty one.
+		boolean post = "POST".equalsIgnoreCase(http.getMethod());
+		byte[] body = post ? readBody(http) : new byte[0];
 		RequestCheck check = this.guard.checkRequest(http.getMethod(), headersOf(http), body, http.getRemoteAddr(),
 				http.isSecure());
 
@@ -205,8 +241,9 @@ public class McpWatchFilter implements Filter {
 		}
 
 		GuardedResponse guarded = new GuardedResponse(out, this.guard, check);
+		ServletRequest forwarded = post ? new GuardedRequest(http, check.body()) : request;
 		try {
-			chain.doFilter(new GuardedRequest(http, check.body()), guarded);
+			chain.doFilter(forwarded, guarded);
 			guarded.finish();
 		}
 		finally {

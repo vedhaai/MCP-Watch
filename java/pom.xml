@@ -110,6 +110,17 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <version>3.5.2</version>
+        <configuration>
+          <environmentVariables>
+            <!--
+              The engine for tests that build their own Engine from init parameters, where no
+              McpWatchOptions can carry the command. This checkout's engine, never npx, so a test
+              never reaches the network. Tests that pass engineCommand themselves ignore this, and
+              TestEngine.requireEngine() skips them all when engine/dist/cli.js is missing.
+            -->
+            <MCPWATCH_ENGINE>node "${project.basedir}/../engine/dist/cli.js"</MCPWATCH_ENGINE>
+          </environmentVariables>
+        </configuration>
       </plugin>
       <!-- Central requires a sources jar and a javadoc jar alongside the main one. -->
       <plugin>
