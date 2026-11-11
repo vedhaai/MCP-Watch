@@ -236,6 +236,18 @@ public final class Json {
 			}
 		}
 
+		/**
+		 * Deliberately looser than the JSON grammar: {@code +5}, {@code 01} and {@code .5} are read
+		 * rather than refused.
+		 *
+		 * <p>This is a security property, not an oversight. A body this parser rejects is passed to
+		 * the application <em>unchecked</em> ("not JSON: not ours to judge"), so every input the
+		 * guard refuses to read is an input the rules never see. Being stricter than the
+		 * application's own parser would therefore be a way through the guard; being looser only
+		 * means judging a message the application will go on to reject itself. Anything genuinely
+		 * malformed ({@code 1.2.3}, {@code --1}, {@code 1e}) still throws, because no number can be
+		 * recovered from it. Leave this as it is.
+		 */
 		private Object number() {
 			int start = this.at;
 			if (peek() == '-' || peek() == '+') {
@@ -339,7 +351,17 @@ public final class Json {
 			out.append(']');
 		}
 		else if (value instanceof Object[]) {
-			write(List.of((Object[]) value), out, depth);
+			// Not List.of(array): that rejects a null element, and a null is a JSON value like any other.
+			out.append('[');
+			boolean first = true;
+			for (Object item : (Object[]) value) {
+				if (!first) {
+					out.append(',');
+				}
+				first = false;
+				write(item, out, depth + 1);
+			}
+			out.append(']');
 		}
 		else {
 			throw new JsonException("Cannot write a " + value.getClass().getName() + " as JSON");
@@ -359,7 +381,12 @@ public final class Json {
 				case '\r': out.append("\\r"); break;
 				case '\t': out.append("\\t"); break;
 				default:
-					if (c < 0x20) {
+					// An unpaired surrogate is not a character UTF-8 can carry: writing it raw turns it
+					// into "?" on the wire, so the engine would judge a different string from the one the
+					// application ends up seeing. Escaped, it survives the round trip intact.
+					if (c < 0x20 || (Character.isHighSurrogate(c) && !(i + 1 < s.length()
+							&& Character.isLowSurrogate(s.charAt(i + 1)))) || (Character.isLowSurrogate(c)
+									&& !(i > 0 && Character.isHighSurrogate(s.charAt(i - 1))))) {
 						out.append(String.format("\\u%04x", (int) c));
 					}
 					else {
