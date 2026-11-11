@@ -331,4 +331,4 @@ mvn test
 
 ## Licence
 
-ISC, as the rest of MCP-Watch. See [LICENSE](LICENSE).
+MIT, as the rest of MCP-Watch. See [LICENSE](LICENSE).
