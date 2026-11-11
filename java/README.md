@@ -1,3 +1,5 @@
+<img src="https://raw.githubusercontent.com/vedhaai/MCP-Watch/main/frontend/src/assets/logo.png" alt="MCPWatch" width="96">
+
 # MCPWatch for Java
 
 [![Maven Central](https://img.shields.io/maven-central/v/ai.vedha/mcpwatch.svg)](https://central.sonatype.com/artifact/ai.vedha/mcpwatch)

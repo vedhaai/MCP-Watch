@@ -22,6 +22,18 @@
     </license>
   </licenses>
 
+  <!--
+    The groupId's own domain. Beyond being the right metadata, this is the only lever the POM
+    offers over the icon that directory sites (mvnrepository.com and the like) show beside an
+    artifact: those icons are the publishing organisation's brand, keyed to its site, not
+    per-artifact art. The Maven 4.0.0 model has no <logo> element - Maven 1 had one and it was
+    dropped - so nothing here sets an image directly.
+  -->
+  <organization>
+    <name>vedhaai</name>
+    <url>https://vedha.ai</url>
+  </organization>
+
   <!-- Maven Central requires a developer entry; npm and PyPI infer it from the account. -->
   <developers>
     <developer>
