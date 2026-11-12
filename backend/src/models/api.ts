@@ -30,6 +30,8 @@ export interface AiSettingsInput {
   model?: string;
   apiKey?: string;
   clearKey?: boolean;
+  // Required when the model is not on this machine (any API provider, or a server elsewhere on the network).
+  hostedConsent?: boolean;
 }
 
 export interface ProjectPatch {
@@ -79,6 +81,7 @@ export interface GuardConfig {
     ai_model?: string;
     ai_key?: string;
     ai_timeout_ms?: number;
+    ai_allow_hosted?: boolean;
   };
   clients: { block: string[]; throttle: string[]; allow: string[] };
 }

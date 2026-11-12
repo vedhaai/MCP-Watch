@@ -22,6 +22,16 @@ export const AI_CHOICES = {
   api: ["Model with an API key", "A hosted model such as OpenAI, Claude or Gemini."],
 } as const;
 
+// True when a model URL is not on this machine, so message text would leave it. Mirrors the guard's own check.
+export function isHostedUrl(url: string): boolean {
+  try {
+    const h = new URL(url).hostname.replace(/^\[|\]$/g, "").toLowerCase();
+    return !(h === "localhost" || h.endsWith(".localhost") || h === "::1" || /^127\.\d+\.\d+\.\d+$/.test(h));
+  } catch {
+    return true;
+  }
+}
+
 // [name, OpenAI-compatible URL, suggested model]
 export const AI_PROVIDERS: [string, string, string][] = [
   ["Custom", "", ""],

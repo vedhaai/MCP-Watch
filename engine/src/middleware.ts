@@ -1,3 +1,4 @@
+import { describeAi } from "./ai.js";
 import { createHash, randomUUID } from "node:crypto";
 import { Engine, type Msg, type Outcome } from "./engine.js";
 import { DEFAULT_SERVER, buildSinks, followProject, projectKey as resolveKey } from "./headerwatch.js";
@@ -74,7 +75,7 @@ export function mcpwatch(server: GuardableServer, options: McpWatchOptions = {})
   (low as { connect: (t: Transport) => Promise<void> }).connect = (transport: Transport) =>
     connect(new GuardedTransport(transport, engine, policy.failOpen));
 
-  const ai = policy.ai.enabled ? `, AI review by ${policy.ai.model}` : "";
+  const ai = describeAi(policy.ai);
   console.error(`[mcpwatch] guarding "${serverName}" in ${policy.mode} mode${ai}${reporting.key ? `, reporting to ${reporting.server}` : ""}`);
   return {
     enabled: true,

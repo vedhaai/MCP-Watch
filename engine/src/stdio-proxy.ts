@@ -1,3 +1,4 @@
+import { describeAi } from "./ai.js";
 import readline from "node:readline";
 import type { Readable, Writable } from "node:stream";
 import spawn from "cross-spawn";
@@ -65,6 +66,6 @@ export function runStdioProxy(policy: Policy, command: string, args: string[], r
   });
   for (const sig of ["SIGINT", "SIGTERM"] as const) process.on(sig, () => child.kill(sig));
 
-  const ai = policy.ai.enabled ? `, AI review by ${policy.ai.model}` : "";
+  const ai = describeAi(policy.ai);
   console.error(`[mcpwatch] ${policy.mode} mode${ai}, guarding stdio server: ${serverKey}`);
 }

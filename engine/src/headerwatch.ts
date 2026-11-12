@@ -225,6 +225,8 @@ export function policyFromConfig(cfg: ServerConfig): PolicyOverrides {
     if (typeof p.ai_model === "string" && p.ai_model) out.ai.model = p.ai_model;
     if (typeof p.ai_key === "string" && (urlOk || !p.ai_url)) out.ai.apiKey = p.ai_key;
     if (typeof p.ai_timeout_ms === "number" && p.ai_timeout_ms > 0 && p.ai_timeout_ms <= 120_000) out.ai.timeoutMs = p.ai_timeout_ms;
+    // The project's decision to let message text go to a model elsewhere. Older dashboards send nothing: the guard's own setting stays.
+    if (typeof p.ai_allow_hosted === "boolean") out.ai.allowHosted = p.ai_allow_hosted;
   }
   if (cfg.clients) out.clients = { block: cfg.clients.block ?? [], allow: cfg.clients.allow ?? [] };
   return out;

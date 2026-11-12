@@ -109,6 +109,11 @@ export class Engine {
     this.reviewer.warmUp();
   }
 
+  // Today's AI reviewer activity: reviews, cache hits, failures by kind, tokens and cost.
+  aiStats() {
+    return this.reviewer.stats();
+  }
+
   // The AI reviewer's findings join the pattern findings. It can add, never remove: a rule the
   // patterns already raised isn't repeated, unless the AI rates it more severe. Returns undefined
   // when the reviewer is off.

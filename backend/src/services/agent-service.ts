@@ -120,6 +120,11 @@ function aiSummary(a: unknown): AiSummary | undefined {
   const s = a as Record<string, unknown>;
   const verdict = (["allow", "suspicious", "block", "error"] as const).find((v) => v === s.verdict);
   if (!verdict) return undefined;
+  const failure = (["timeout", "unreachable", "http", "auth", "parse", "busy", "budget", "circuit", "consent"] as const).find((f) => f === s.failure);
+  // Counts and prices from a guard are plain numbers, never negative, and bounded so a bad guard can't skew totals.
+  const num = (v: unknown, max: number) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.min(v, max) : undefined);
   return { model: String(s.model ?? "").slice(0, 100), verdict, ms: Number(s.ms) || 0, cached: s.cached === true || undefined,
-    error: s.error ? String(s.error).slice(0, 300) : undefined, summary: s.summary ? String(s.summary).slice(0, 300) : undefined };
+    error: s.error ? String(s.error).slice(0, 300) : undefined, failure,
+    promptTokens: num(s.promptTokens, 1e7), completionTokens: num(s.completionTokens, 1e7), tokensEstimated: s.tokensEstimated === true || undefined,
+    costUsd: num(s.costUsd, 1e4), summary: s.summary ? String(s.summary).slice(0, 300) : undefined };
 }
