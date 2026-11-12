@@ -126,16 +126,20 @@ Messages from the server are checked in `Engine.fromServer`. The guard can only 
   - every kind also gets MA001
 
   The message is wrapped in randomly named `<untrusted-…>` tags. The model is told to treat the content as data.
-- **What leaves the process.** Text with secrets masked and the caller's token removed, cut at 6,000 characters.
+- **What leaves the process.** Text with secrets masked and the caller's token removed, cut at 6,000 characters. A model that is not on this machine (`isHostedAi`: any address that isn't loopback) is used only when `allowHosted` is set; it also gets emails, Luhn-valid card numbers, social security numbers and user names in paths masked (`redactPersonal` in [patterns.ts](engine/src/patterns.ts)), and at most `hostedMaxChars` (3,000). Without consent the review is skipped as `consent` and not even the warm-up is sent. The dashboard asks for the same consent when a project saves such a model.
 - **Answers are checked.**
   - The reply must be JSON.
   - A rule ID the model wasn't given becomes MA001.
   - A finding under 0.6 confidence counts one severity lower.
-  - In `advise` mode, findings are capped at medium.
+  - In `advise` mode (or with `requireVerified` and an unchecked model), findings are capped at medium.
   - A "block" with no finding counts as a medium MA001.
 - **Merge, never subtract.** AI findings are added unless the rules already raised the same rule at the same or higher severity. Rule findings are never removed. This matters because the payload being reviewed can address the model directly.
 - **Cache and warm-up.** Answers are cached (LRU, 1,000 entries) by model, kind and content. The guard sends a tiny request when it starts or when AI is switched on, so the first real message doesn't wait for the model to load.
-- **Failure.** On a timeout (default 8 s), an error or an answer that isn't JSON, the event records `ai.verdict: "error"` and the rules decide. With `required: true`, the message is blocked as MA002.
+- **Failure.** On a timeout (default 8 s), an error or an answer that isn't JSON, the event records `ai.verdict: "error"` and the rules decide. With `required: true`, the message is blocked as MA002. The event's `ai.failure` says which kind: `timeout`, `unreachable`, `http`, `auth`, `parse`, or one of the skips below.
+- **Order of checks.** A review goes through these gates, each of which falls back to the rules: consent (hosted model allowed?), cache, daily budget, circuit breaker, concurrency limit, then the model call.
+- **Usage and budget.** Every answered review adds its tokens (from the server's `usage`, otherwise estimated and marked) and cost (from the policy's price per million tokens) to today's totals (`AiReviewer.stats()`, `Engine.aiStats()`) and to the event. `maxTokensPerDay` or `maxCostPerDay` stops model calls for the rest of the UTC day (`budget`).
+- **Circuit breaker.** After `circuitFailures` (3) model failures in a row (timeout, unreachable, http, auth or parse; skips don't count) calls stop for `circuitCooldownMs` (30 s). Then one review goes through as a probe: a good answer closes the breaker, a failure reopens it, and the others wait. A change of URL, model or key resets it. Cached answers are served either way.
+- **Checking a model.** `mcpwatch ai` ([ai-check.ts](engine/src/ai-check.ts)) runs the 50 labelled samples in [ai-eval.ts](engine/src/ai-eval.ts) and passes a model that catches at least 80% of the attacks with at most 10% false alarms. A pass is recorded in `ai-verified.json` ([ai-verified.ts](engine/src/ai-verified.ts)). With `requireVerified`, a model that isn't recorded can't block on its own: its high findings count as medium.
 
 ## The settings loop
 

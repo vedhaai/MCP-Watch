@@ -168,6 +168,12 @@ function EventDetail({ e }: { e: McpEvent }) {
                 <Tag tone={e.ai.verdict === "block" ? "high" : e.ai.verdict === "suspicious" ? "medium" : e.ai.verdict === "allow" ? "ok" : "outline"}>{e.ai.verdict}</Tag>
                 <span>{e.ai.model}</span>
                 <Typography component="span" sx={{ color: "text.secondary", fontSize: 13 }}>{e.ai.cached ? "cached" : `${e.ai.ms} ms`}{e.ai.error ? ` · ${e.ai.error}` : ""}</Typography>
+                {e.ai.promptTokens !== undefined && (
+                  <Typography component="span" sx={{ color: "text.secondary", fontSize: 13 }}>
+                    {e.ai.tokensEstimated ? "~" : ""}{(e.ai.promptTokens + (e.ai.completionTokens ?? 0)).toLocaleString()} tokens
+                    {e.ai.costUsd !== undefined ? ` · $${e.ai.costUsd.toFixed(4)}` : ""}
+                  </Typography>
+                )}
               </Box>
               {e.ai.summary && <Typography sx={{ fontSize: 13, mt: 1 }}>{e.ai.summary}</Typography>}
             </Box>

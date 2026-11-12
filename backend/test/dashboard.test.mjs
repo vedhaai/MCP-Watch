@@ -214,7 +214,8 @@ test("dashboard: a user cannot aim the AI settings at the dashboard's own networ
     ["http://169.254.169.254/latest/meta-data", /reserved address/],
   ];
   for (const [url, message] of internal) {
-    const ai = { provider: "api", url, model: "m", apiKey: "sk-test" };
+    // The owner has confirmed the model may see message text (hostedConsent), so it is the address that is refused.
+    const ai = { provider: "api", url, model: "m", apiKey: "sk-test", hostedConsent: true };
     const tested = await api(`/api/projects/${p.id}/ai-test`, { cookie, method: "POST", body: ai });
     assert.equal(tested.status, 400, `Test AI should refuse ${url}`);
     assert.match(tested.body.error, message);
@@ -227,13 +228,17 @@ test("dashboard: a user cannot aim the AI settings at the dashboard's own networ
 
   // A local model is the one case that may reach this machine — but not the metadata service.
   assert.equal((await api(`/api/projects/${p.id}`, { cookie, method: "PATCH", body: { ai: { provider: "local", url: "http://127.0.0.1:11434/v1", model: "qwen2.5:7b" } } })).status, 200);
-  const metadata = await api(`/api/projects/${p.id}`, { cookie, method: "PATCH", body: { ai: { provider: "local", url: "http://169.254.169.254/v1", model: "m" } } });
+  const metadata = await api(`/api/projects/${p.id}`, { cookie, method: "PATCH", body: { ai: { provider: "local", url: "http://169.254.169.254/v1", model: "m", hostedConsent: true } } });
   assert.equal(metadata.status, 400);
   assert.match(metadata.body.error, /reserved address/);
 
   // A real provider still saves and reaches the guards.
-  const ok = await api(`/api/projects/${p.id}`, { cookie, method: "PATCH", body: { ai: { provider: "api", url: "https://api.openai.com/v1", model: "gpt-4o-mini", apiKey: "sk-test" } } });
+  const ok = await api(`/api/projects/${p.id}`, { cookie, method: "PATCH", body: { ai: { provider: "api", url: "https://api.openai.com/v1", model: "gpt-4o-mini", apiKey: "sk-test", hostedConsent: true } } });
   assert.equal(ok.status, 200);
+  // Without the owner's consent a hosted provider is refused, however valid its address.
+  const unconfirmed = await api(`/api/projects/${p.id}`, { cookie, method: "PATCH", body: { ai: { provider: "api", url: "https://api.openai.com/v1", model: "gpt-4o-mini", apiKey: "sk-test" } } });
+  assert.equal(unconfirmed.status, 400);
+  assert.match(unconfirmed.body.error, /confirm that message text/);
   assert.equal((await api("/api/agent/config", { headers: { "x-mcpwatch-key": p.key } })).body.policy.ai_url, "https://api.openai.com/v1");
 });
 
@@ -415,7 +420,7 @@ test("dashboard: project and AI keys are encrypted on disk, and the settings a g
   await ready();
   const { cookie } = await api("/api/auth/register", { method: "POST", body: { username: "sec", password: "sec-pass-123" } });
   const p = (await api("/api/projects", { cookie, method: "POST", body: { name: "Signed", kind: "middleware" } })).body;
-  await api(`/api/projects/${p.id}`, { cookie, method: "PATCH", body: { ai: { provider: "api", url: "https://api.openai.com/v1", model: "gpt-4o-mini", apiKey: "sk-test-very-secret" } } });
+  await api(`/api/projects/${p.id}`, { cookie, method: "PATCH", body: { ai: { provider: "api", url: "https://api.openai.com/v1", model: "gpt-4o-mini", apiKey: "sk-test-very-secret", hostedConsent: true } } });
 
   const onDisk = readFileSync(path.join(data, "projects.json"), "utf8");
   assert.ok(!onDisk.includes(p.key), "the project key isn't stored in the clear");

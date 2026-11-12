@@ -32,7 +32,10 @@ export interface McpEvent {
   score: number;
   findings: Finding[];
   snippet?: string;
-  ai?: { model: string; verdict: string; ms: number; cached?: boolean; error?: string; summary?: string };
+  ai?: {
+    model: string; verdict: string; ms: number; cached?: boolean; error?: string; failure?: string; summary?: string;
+    promptTokens?: number; completionTokens?: number; tokensEstimated?: boolean; costUsd?: number;
+  };
 }
 
 export interface Project {
@@ -49,7 +52,7 @@ export interface Project {
   allowedOrigins: string[];
   requireAuth: boolean;
   expectedAudience: string;
-  ai: { provider: AiProvider; url: string; model: string; keySet: boolean; keyHint: string };
+  ai: { provider: AiProvider; url: string; model: string; keySet: boolean; keyHint: string; hostedConsent?: boolean };
   version: number;
   createdAt: string;
   lastSeenAt: string | null;

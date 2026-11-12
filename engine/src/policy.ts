@@ -77,6 +77,29 @@ export interface AiPolicy {
   required: boolean;
   // Longest text sent to the model per message; the rest is cut.
   maxChars: number;
+  // Price in US dollars per million tokens, to put a cost on each review. 0 = free (a local model).
+  inputPricePerMTok: number;
+  outputPricePerMTok: number;
+  // Daily caps (UTC day). Once one is reached the reviewer stops calling the model until the next day
+  // and the rules alone decide (or MA002 fires when `required`). 0 = no cap.
+  maxTokensPerDay: number;
+  maxCostPerDay: number;
+  // Circuit breaker: after this many model failures in a row the reviewer stops calling the model for
+  // `circuitCooldownMs`, so a model that is down costs one timeout, not one per message. Then one
+  // review goes through as a probe; if it works the breaker closes. 0 = never stop.
+  circuitFailures: number;
+  circuitCooldownMs: number;
+  // A model on another machine (a hosted API, or a server elsewhere on the network) sees the text of
+  // every reviewed message. It is only used when this is true. Such a model also gets personal data
+  // masked on top of secrets (emails, card numbers, user names in paths) and at most `hostedMaxChars`.
+  // A model on this machine (loopback) needs neither.
+  allowHosted: boolean;
+  hostedMaxChars: number;
+  // With authority "block", only a model that has passed `mcpwatch ai` (recorded in `verifiedFile`) may
+  // block on its own; an unchecked model's findings are capped at medium, as in "advise", and add to the
+  // session score. Off by default, so existing setups keep blocking.
+  requireVerified: boolean;
+  verifiedFile: string;
 }
 
 export const HOME = path.join(os.homedir(), ".mcpwatch");
@@ -116,6 +139,16 @@ export const DEFAULT_POLICY: Policy = {
     authority: "block",
     required: false,
     maxChars: 6000,
+    inputPricePerMTok: 0,
+    outputPricePerMTok: 0,
+    maxTokensPerDay: 0,
+    maxCostPerDay: 0,
+    circuitFailures: 3,
+    circuitCooldownMs: 30_000,
+    allowHosted: false,
+    hostedMaxChars: 3000,
+    requireVerified: false,
+    verifiedFile: path.join(HOME, "ai-verified.json"),
   },
 };
 
@@ -129,6 +162,18 @@ export function aiFromEnv(env: NodeJS.ProcessEnv = process.env): Partial<AiPolic
   if (env.MCPWATCH_AI_TIMEOUT_MS) out.timeoutMs = Number(env.MCPWATCH_AI_TIMEOUT_MS);
   if (env.MCPWATCH_AI_AUTHORITY === "block" || env.MCPWATCH_AI_AUTHORITY === "advise") out.authority = env.MCPWATCH_AI_AUTHORITY;
   if (env.MCPWATCH_AI_REQUIRED) out.required = env.MCPWATCH_AI_REQUIRED === "1";
+  const num = (v: string | undefined) => (v !== undefined && v !== "" && Number.isFinite(Number(v)) && Number(v) >= 0 ? Number(v) : undefined);
+  out.inputPricePerMTok = num(env.MCPWATCH_AI_INPUT_PRICE);
+  out.outputPricePerMTok = num(env.MCPWATCH_AI_OUTPUT_PRICE);
+  out.maxTokensPerDay = num(env.MCPWATCH_AI_MAX_TOKENS_PER_DAY);
+  out.maxCostPerDay = num(env.MCPWATCH_AI_MAX_COST_PER_DAY);
+  out.circuitFailures = num(env.MCPWATCH_AI_CIRCUIT_FAILURES);
+  out.circuitCooldownMs = num(env.MCPWATCH_AI_CIRCUIT_COOLDOWN_MS);
+  out.hostedMaxChars = num(env.MCPWATCH_AI_HOSTED_MAX_CHARS);
+  if (env.MCPWATCH_AI_ALLOW_HOSTED) out.allowHosted = env.MCPWATCH_AI_ALLOW_HOSTED === "1";
+  if (env.MCPWATCH_AI_REQUIRE_VERIFIED) out.requireVerified = env.MCPWATCH_AI_REQUIRE_VERIFIED === "1";
+  if (env.MCPWATCH_AI_VERIFIED_FILE) out.verifiedFile = env.MCPWATCH_AI_VERIFIED_FILE;
+  for (const k of Object.keys(out) as (keyof AiPolicy)[]) if (out[k] === undefined) delete out[k];
   return out;
 }
 
@@ -159,6 +204,14 @@ export function loadPolicy(configFile: string | undefined, overrides: PolicyOver
   const policy: Policy = { ...DEFAULT_POLICY, clients: { block: [], allow: [] }, ...fromFile, ...overrides, ai };
   if (!["block", "advise"].includes(policy.ai.authority)) {
     throw new Error(`Unknown AI authority "${policy.ai.authority}" (use block or advise)`);
+  }
+  for (const k of ["inputPricePerMTok", "outputPricePerMTok", "maxTokensPerDay", "maxCostPerDay", "circuitFailures", "circuitCooldownMs"] as const) {
+    if (typeof policy.ai[k] !== "number" || !Number.isFinite(policy.ai[k]) || policy.ai[k] < 0) {
+      throw new Error(`AI setting "${k}" must be zero or a positive number`);
+    }
+  }
+  if (typeof policy.ai.hostedMaxChars !== "number" || !(policy.ai.hostedMaxChars > 0)) {
+    throw new Error(`AI setting "hostedMaxChars" must be a positive number`);
   }
   if (!["off", "observe", "protect", "enforce"].includes(policy.mode)) {
     throw new Error(`Unknown mode "${policy.mode}" (use off, observe, protect or enforce)`);

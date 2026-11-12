@@ -37,6 +37,40 @@ export function redactSecrets(s: string): string {
   return out;
 }
 
+// Card numbers pass the Luhn check; this keeps order ids, timestamps and other long numbers readable.
+function luhn(digits: string): boolean {
+  let sum = 0;
+  for (let i = 0; i < digits.length; i++) {
+    let d = Number(digits[digits.length - 1 - i]);
+    if (i % 2 === 1 && (d *= 2) > 9) d -= 9;
+    sum += d;
+  }
+  return sum % 10 === 0;
+}
+
+// The user-name folder of a profile path: C:\Users\Jane, /Users/jane, /home/jane, C:\Documents and Settings\Jane.
+// - A path inside JSON has its backslashes doubled, and one inside JSON inside JSON quadrupled: 1 to 4 are allowed.
+// - A name may hold spaces ("Mary Ann", up to three words) when a separator follows, which tells where it ends.
+//   Without one only the first word is taken, so a sentence after a path isn't swallowed.
+// - Shared profiles (Public, Shared, Default, All Users) say nothing about a person and stay.
+const PROFILE_PATH = new RegExp(
+  // (?<!\bAll ) keeps the "Users" inside "All Users" from starting a match of its own.
+  String.raw`(?<!\bAll )\b((?:Users|home|Documents and Settings)(?:\\{1,4}|/))(?!(?:Public|Shared|Default|All Users)\b)` +
+  String.raw`(?:[^\\/\s"'<>|:]+(?: [^\\/\s"'<>|:]+){0,2}(?=\\|/)|[^\\/\s"'<>|:]+)`,
+  "gi",
+);
+
+// The extra pass for a model that runs on someone else's machine, on top of redactSecrets: personal data
+// that a security review doesn't need. The part that matters for judging an attack stays: an email's
+// domain (where data is sent), the shape of a path. Only the person is removed.
+export function redactPersonal(s: string): string {
+  return s
+    .replace(/\b[A-Za-z0-9._%+-]+@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,})\b/g, "[email]@$1")
+    .replace(/\b(?:\d[ -]?){12,18}\d\b/g, (m) => (luhn(m.replace(/\D/g, "")) ? "[card-number]" : m))
+    .replace(/\b\d{3}-\d{2}-\d{4}\b/g, "[ssn]")
+    .replace(PROFILE_PATH, "$1[user]");
+}
+
 const SHELL_CMDS =
   "curl|wget|nc|ncat|bash|sh|zsh|powershell|pwsh|cmd(?:\\.exe)?|rm|del|chmod|chown|python3?|perl|node|cat|type|whoami|id|uname|nslookup|ping|certutil|bitsadmin";
 

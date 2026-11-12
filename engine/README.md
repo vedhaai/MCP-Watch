@@ -33,7 +33,7 @@ npx @vedhaai/mcpwatch http --listen 8800 --upstream https://host/mcp     # Strea
 ```powershell
 npx @vedhaai/mcpwatch scan      # check the MCP servers configured on this machine
 npx @vedhaai/mcpwatch rules     # list the rules
-npx @vedhaai/mcpwatch ai        # check the local AI reviewer
+npx @vedhaai/mcpwatch ai        # score the AI reviewer's model on 50 labelled messages
 npx @vedhaai/mcpwatch engine    # the engine as a sidecar for other languages (used by the Python package)
 ```
 

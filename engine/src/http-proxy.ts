@@ -1,3 +1,4 @@
+import { describeAi } from "./ai.js";
 import { createHash } from "node:crypto";
 import http from "node:http";
 import { BLOCKED, Engine, type Msg, type Outcome } from "./engine.js";
@@ -159,7 +160,7 @@ export function runHttpProxy(policy: Policy, listen: number, upstream: URL, repo
       clearTimeout(timer);
     }
   }).listen(listen, "127.0.0.1", () => {
-    const ai = policy.ai.enabled ? `, AI review by ${policy.ai.model}` : "";
+    const ai = describeAi(policy.ai);
     console.error(`[mcpwatch] ${policy.mode} mode${ai}, http://127.0.0.1:${listen}/mcp -> ${upstream.href}`);
   });
 }

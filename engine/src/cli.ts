@@ -37,6 +37,8 @@ Proxy options:
   --ai-model <name>                model (default qwen2.5:7b, or MCPWATCH_AI_MODEL)
   --ai-url <url>                   OpenAI-compatible endpoint (default Ollama, http://127.0.0.1:11434/v1)
   --ai-advise                      AI findings add to the score but never block on their own
+  --ai-allow-hosted                allow a model on another machine or a hosted API (message text is sent there,
+                                   with secrets and personal data masked). Without it only a model on this machine is used.
 
 Scan options:
   --file <config.json>             scan this config instead of the clients' default ones (repeatable)
@@ -68,6 +70,7 @@ if (own.includes("--ai") || own[0] === "ai") overrides.ai.enabled = true;
 if (opt("ai-model")) overrides.ai.model = opt("ai-model");
 if (opt("ai-url")) overrides.ai.url = opt("ai-url");
 if (own.includes("--ai-advise")) overrides.ai.authority = "advise";
+if (own.includes("--ai-allow-hosted")) overrides.ai.allowHosted = true;
 
 let policy: Policy;
 try {

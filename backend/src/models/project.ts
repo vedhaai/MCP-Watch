@@ -51,6 +51,10 @@ export interface ProjectAi {
   model: string;
   // Only for "api". Stored here and sent to the project's guards; never sent back to the browser.
   apiKey: string;
+  // For a model that is not on the guard's machine: the owner confirmed that message text may be sent
+  // there. Saving such a model without it is refused. Settings saved before this existed have none and
+  // keep working (they were chosen on purpose); only an explicit `false` withholds it from the guards.
+  hostedConsent?: boolean;
 }
 
 export const LOCAL_AI = { url: "http://127.0.0.1:11434/v1", model: "qwen2.5:7b" };

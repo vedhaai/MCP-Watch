@@ -1,3 +1,4 @@
+import { describeAi } from "./ai.js";
 import readline from "node:readline";
 import { BLOCKED, Engine, type Msg, type Outcome } from "./engine.js";
 import { buildSinks, followProject, type Reporting } from "./headerwatch.js";
@@ -90,6 +91,6 @@ export function runEngineServer(policy: Policy, serverKey: string, reporting: Re
   });
 
   send({ id: 0, ready: true, mode: engine.mode });
-  const ai = policy.ai.enabled ? `, AI review by ${policy.ai.model}` : "";
+  const ai = describeAi(policy.ai);
   console.error(`[mcpwatch] engine for "${serverKey}" in ${policy.mode} mode${ai}${reporting.key ? `, reporting to ${reporting.server}` : ""}`);
 }

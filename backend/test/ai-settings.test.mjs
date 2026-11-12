@@ -84,3 +84,26 @@ test("dashboard: choose rules only, a local model or an API model; the key never
   await api(`/api/projects/${p.id}`, "PATCH", { ai: { provider: "off" } });
   assert.equal((await config()).ai_review, false);
 });
+
+test("dashboard: a model on another machine needs the owner's consent, and the guards are told", async () => {
+  const { AiService } = await import("../dist/services/ai-service.js");
+  const svc = new AiService();
+  const off = { provider: "off", url: "", model: "", apiKey: "" };
+  const api = { provider: "api", url: "https://api.example.test/v1", model: "m", apiKey: "sk-test-123456" };
+
+  assert.throws(() => svc.fromInput(api, off), /confirm that message text/);
+  assert.throws(() => svc.fromInput({ ...api, hostedConsent: false }, off), /confirm that message text/);
+  const ai = svc.fromInput({ ...api, hostedConsent: true }, off);
+  assert.equal(ai.hostedConsent, true);
+  assert.equal(svc.guardSettings(ai).ai_allow_hosted, true);
+
+  // Settings saved before the consent existed keep working; an explicit false is passed on.
+  assert.equal(svc.guardSettings(api).ai_allow_hosted, true);
+  assert.equal(svc.guardSettings({ ...api, hostedConsent: false }).ai_allow_hosted, false);
+
+  // A model on this machine needs none, and "local" pointed at another address does.
+  assert.equal(svc.fromInput({ provider: "local" }, off).hostedConsent, undefined);
+  assert.equal(svc.fromInput({ provider: "api", url: "http://127.0.0.1:8080/v1", model: "m", apiKey: "sk-test-123456" }, off).hostedConsent, undefined);
+  assert.throws(() => svc.fromInput({ provider: "local", url: "http://192.168.1.20:11434/v1", model: "m" }, off), /confirm that message text/);
+  assert.equal(svc.guardSettings(off).ai_review, false);
+});

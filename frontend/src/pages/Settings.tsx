@@ -13,7 +13,7 @@ import Typography from "@mui/material/Typography";
 import { api } from "../api";
 import { Label, useConfirm } from "../components/ui";
 import { useApp } from "../context";
-import { AI_CHOICES, AI_PROVIDERS, MODES } from "../lib";
+import { AI_CHOICES, AI_PROVIDERS, MODES, isHostedUrl } from "../lib";
 import type { AiProvider, Mode, Project } from "../types";
 
 const list = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
@@ -50,8 +50,13 @@ export function SettingsTab({ project: p, onChange }: { project: Project; onChan
   const [saved, setSaved] = useState("");
   const [name, setName] = useState(p.name);
 
+  // Projects saved before the consent existed have none and keep working, so an API project shows it as given.
+  const [consent, setConsent] = useState(p.ai.hostedConsent ?? p.ai.provider === "api");
+  // Message text leaves the guard's machine: any API provider, or a "local" server at another address.
+  const hosted = provider === "api" ? isHostedUrl(remote.url) : provider === "local" && !!local.url.trim() && isHostedUrl(local.url);
+
   const aiForm = () =>
-    provider === "local" ? { provider, ...local } : provider === "api" ? { provider, ...remote } : { provider };
+    provider === "local" ? { provider, ...local, hostedConsent: consent } : provider === "api" ? { provider, ...remote, hostedConsent: consent } : { provider };
 
   const testAi = async () => {
     setAiResult("Testing… (a local model may take a while to load)");
@@ -153,6 +158,13 @@ export function SettingsTab({ project: p, onChange }: { project: Project; onChan
               <Note>Any OpenAI-compatible API. Model names are suggestions; use any model your account has. Messages are sent to this provider with secrets masked. The key is stored by this dashboard and passed to the project's guards; it is never shown again here.</Note>
             </Box>
           </Collapse>
+          {hosted && (
+            <Box sx={{ ml: 3.5, mt: 1.5 }}>
+              <FormControlLabel control={<Checkbox size="small" checked={consent} onChange={(e) => { setConsent(e.target.checked); setAiResult(""); }} />}
+                label="Allow sending message text to this model, which is not on the guard's machine" />
+              <Note>The guard masks secrets and personal data (emails, card numbers, user names in paths) and sends at most 3,000 characters per message. Without this the model is not used and the rules decide alone.</Note>
+            </Box>
+          )}
           <Box sx={{ display: "flex", gap: 1.25, alignItems: "center", flexWrap: "wrap", mt: 1.5 }}>
             <Button variant="outlined" color="inherit" onClick={testAi}>Test AI</Button>
             <Typography sx={{ fontSize: 13, color: "text.secondary" }}>{aiResult}</Typography>

@@ -60,7 +60,7 @@ Every script:
 | `npm test` | All tests (engine, then backend). One package: `npm test -w engine` or `npm test -w backend` |
 | `npm run test:java` | The Java package's tests (needs Java 17+ and Maven) |
 | `npm run scan` | Check the MCP servers configured on this machine. Pass options after `--`, e.g. `npm run scan -- --connect` |
-| `npm run ai` | Check the local AI reviewer (Ollama) with sample messages |
+| `npm run ai` | Score the AI reviewer's model on 50 labelled messages (attacks caught, false alarms) |
 | `npm run rules` / `npm run pins:reset` | List the rules / forget pinned tool definitions |
 
 ### Connect a server through the dashboard
@@ -129,6 +129,11 @@ Settings come from options (`mcpwatch(server, { projectKey, server, mode })`) or
 | `MCPWATCH_AI=1` | Turn on the [AI reviewer](#ai-reviewer-local-model). With a project key, the project's **AI review** choice (model, URL and key included) wins |
 | `MCPWATCH_AI_MODEL`, `MCPWATCH_AI_URL` | Model (default `qwen2.5:7b`) and OpenAI-compatible endpoint (default Ollama, `http://127.0.0.1:11434/v1`) |
 | `MCPWATCH_AI_AUTHORITY`, `MCPWATCH_AI_REQUIRED=1`, `MCPWATCH_AI_TIMEOUT_MS`, `MCPWATCH_AI_KEY` | `block` (default) or `advise`; block when the model is down; review timeout (default 8000); API key for servers that need one |
+| `MCPWATCH_AI_ALLOW_HOSTED=1`, `MCPWATCH_AI_HOSTED_MAX_CHARS` | Allow a model on another machine or a hosted API (message text goes there; default: only a model on this machine is used), and the most text sent to it per message (default 3000) |
+| `MCPWATCH_AI_INPUT_PRICE`, `MCPWATCH_AI_OUTPUT_PRICE` | Price in US dollars per million tokens, to put a cost on each review (default 0) |
+| `MCPWATCH_AI_MAX_TOKENS_PER_DAY`, `MCPWATCH_AI_MAX_COST_PER_DAY` | Daily caps (UTC day). Once reached, the model isn't called until the next day and the rules decide (default 0 = no cap) |
+| `MCPWATCH_AI_CIRCUIT_FAILURES`, `MCPWATCH_AI_CIRCUIT_COOLDOWN_MS` | Stop calling a failing model after this many failures in a row (default 3, 0 = never), for this long (default 30000) |
+| `MCPWATCH_AI_REQUIRE_VERIFIED=1`, `MCPWATCH_AI_VERIFIED_FILE` | Only a model that passed `mcpwatch ai` may block on its own, and where passes are recorded (default `~/.mcpwatch/ai-verified.json`) |
 | `MCPWATCH_EVENTS`, `MCPWATCH_PINS`, `MCPWATCH_CONFIG` | Local events file (used when there's no key), pinned tools file, policy file |
 
 Events are sent in the background, about once a second. If the dashboard is down, the MCP server keeps working.
@@ -199,13 +204,34 @@ What the guard does to each message:
 
 ## AI reviewer (local model)
 
-With the AI reviewer on, a local model reviews every message against the rules below, on top of the pattern checks. It covers tool calls, resource reads, prompts, tool definitions, tool results, sampling and elicitation. Pings, list requests and notifications are not reviewed. It catches what patterns can't, such as instructions to the model hidden in an email body. Nothing leaves the machine.
+With the AI reviewer on, a model reviews every message against the rules below, on top of the pattern checks. It covers tool calls, resource reads, prompts, tool definitions, tool results, sampling and elicitation. Pings, list requests and notifications are not reviewed. It catches what patterns can't, such as instructions to the model hidden in an email body. With a model on the guard's machine (the default), nothing leaves the machine. A hosted model is possible, but only when you allow it (see [Hosted models](#hosted-models)).
 
 ```powershell
 ollama pull qwen2.5:7b                             # any model works; this one is the default
-node engine/dist/cli.js ai                       # check: sends 6 sample messages, shows what the model finds
+node engine/dist/cli.js ai                       # score the model on 50 labelled messages
 node engine/dist/cli.js --ai -- npx -y some-mcp-server     # proxy with AI review
 ```
+
+### Choosing and checking a model
+
+`mcpwatch ai` sends 50 labelled messages to the model: 15 ordinary ones that must pass, and 35 attacks across six groups (injection, paths and URLs, secrets, poisoned tool definitions, poisoned tool output, and attacks that hide in encoding, unicode, other languages or several fields). It prints what was caught and missed per group, the false alarms, and the tokens and cost used.
+
+| | Pass mark |
+|---|---|
+| Attacks caught | at least 80% |
+| Ordinary messages flagged | at most 10% |
+
+A model that passes is recorded in `~/.mcpwatch/ai-verified.json`. The command exits 0 on a pass, so it can run in CI. The first sample includes loading the model, so a local run takes a minute or two.
+
+Rules of thumb for picking a model. These are not measurements: this project publishes no scores, so run the check on the model you intend to use.
+
+| Class | Speed and cost | What to expect |
+|---|---|---|
+| Small (about 3B) | Fastest; free locally | Usually fine on plain attacks, often misses the hidden ones; likely to fall short of the pass mark |
+| 7B–8B (`qwen2.5:7b` is the default) | About 0.4–1 s per message on a laptop GPU; free locally | A reasonable starting point for inline review. Expect misses in the hidden-attack group |
+| 14B and up, or a small hosted model | Slower or paid | Better on the hidden attacks. Hosted models send message text off the machine and cost tokens |
+
+Until a model has passed, treat it as an extra opinion on top of the rules: run it with `--ai-advise` (its findings add to the session score but never block alone), or set `MCPWATCH_AI_REQUIRE_VERIFIED=1` so an unchecked model is held to that automatically. `requireVerified` is off by default so existing setups keep blocking. The pattern rules never depend on the model either way.
 
 **From the dashboard** (projects with a key): the Settings tab's **AI review** section has three choices. Guards pick the choice up within 5 seconds, with no restart.
 
@@ -217,7 +243,7 @@ node engine/dist/cli.js --ai -- npx -y some-mcp-server     # proxy with AI revie
 
 - **Test AI:** sends one sample attack to the chosen model, before or after saving. It shows the response time and whether the model caught the attack, or why it failed (for example, a refused key).
 - **The API key:** stored encrypted in the dashboard's `projects.json` and passed to the project's guards with their settings. After saving, the browser only ever sees its last 4 characters. Leave the key field empty to keep the saved one.
-- **Data leaving the machine:** with an API model, messages go to that provider, with secrets masked. With a local model, nothing leaves the machine.
+- **Data leaving the machine:** with an API model, messages go to that provider, so saving one asks you to confirm it (see [Hosted models](#hosted-models)). With a local model, nothing leaves the machine.
 - **Timeouts:** 8 s for a local model, 15 s for an API model.
 - **JSON mode:** some providers reject it. The guard then asks again without it.
 
@@ -228,18 +254,40 @@ How it decides:
 - **Same rule ids.** The model reports the rules a message breaks (MW001, MW020, MW022, …), or **MA001** for a threat no rule covers. The model's answers are checked:
   - A rule id it wasn't given becomes MA001.
   - A finding under 0.6 confidence counts one severity lower.
-- **Authority:** with `block` (the default), a high AI finding blocks like a rule. With `advise` (`--ai-advise`), AI findings count at most medium: they add to the session score but never block alone.
-- **Fallback:** if the model is down, times out or answers nonsense, the rules alone decide, and the event shows `ai: error`. With `required: true`, the message is blocked instead (MA002).
-- **Privacy:** secrets and the caller's own token are masked before the text goes to the model. Text is cut at 6,000 characters. Unchanged tool definitions and repeated messages are answered from a cache.
+- **Authority:** with `block` (the default), a high AI finding blocks like a rule. With `advise` (`--ai-advise`), AI findings count at most medium: they add to the session score but never block alone. With `requireVerified`, a model that hasn't passed `mcpwatch ai` is held to `advise`.
+- **Fallback:** if the model is down, times out or answers nonsense, the rules alone decide, and the event shows `ai: error` with the kind of failure (`timeout`, `unreachable`, `http`, `auth`, `parse`, `busy`, `budget`, `circuit` or `consent`). With `required: true`, the message is blocked instead (MA002).
+- **Privacy:** secrets and the caller's own token are masked before the text goes to the model. Text is cut at 6,000 characters (3,000 for a hosted model). Unchanged tool definitions and repeated messages are answered from a cache.
 - **Latency:** with `qwen2.5:7b` on a typical laptop GPU, about 0.4–1 s per reviewed message once the model is loaded. The guard loads the model when it starts. Messages are still delivered in order.
 
-The Requests page marks AI findings with ✦ and shows each message's AI verdict and review time.
+The Requests page marks AI findings with ✦ and shows each message's AI verdict, review time, and the tokens and cost it used.
+
+### Hosted models
+
+A model that is not on the guard's machine (a hosted API, or a server elsewhere on the network) sees the text of every reviewed message. So it is **not used until you allow it**:
+
+- **Dashboard:** saving an API model, or a "local" model at another address, requires ticking *Allow sending message text to this model*. Projects saved before this existed keep working.
+- **Without a dashboard:** `--ai-allow-hosted`, `MCPWATCH_AI_ALLOW_HOSTED=1` or `"allowHosted": true`. Without it the review is skipped (`ai.failure: "consent"`), the rules decide, and with `required` the message is blocked (MA002). Not even the warm-up request is sent.
+
+A hosted model also gets less than a local one. On top of secrets, the guard masks emails (the domain stays, since it shows where data would go), card numbers (checked with the Luhn test, so order numbers stay readable), US social security numbers and user names in file paths. It sends at most 3,000 characters per message (`hostedMaxChars`). The first review to a hosted endpoint prints a notice saying so, and the startup line shows the model's host and whether it is allowed.
+
+### Usage and cost
+
+Each reviewed message's event records the tokens used (as the model server reports them, or estimated at about 4 characters per token and marked with `~` when it reports none) and, if you set a price, the cost. Cached answers cost nothing. `Engine.aiStats()` returns today's totals: reviews, cache hits, failures by kind, tokens and cost.
+
+To cap spend, set `maxTokensPerDay` or `maxCostPerDay` (UTC day). Once a cap is reached, the model isn't called until the next day, events show `ai.failure: "budget"`, and the rules decide.
+
+### When the model keeps failing
+
+After 3 failures in a row (`circuitFailures`) the reviewer stops calling the model for 30 seconds (`circuitCooldownMs`), so a model that is down costs one timeout, not one per message. Events show `ai.failure: "circuit"` and no waiting. After the pause a single review goes through as a probe: if it works, reviews resume; if not, the pause starts again. Cached answers are still used meanwhile. Changing the model, URL or key starts afresh. Set `circuitFailures` to 0 to turn it off.
 
 Policy file (all fields optional):
 
 ```json
 { "ai": { "enabled": true, "url": "http://127.0.0.1:11434/v1", "model": "qwen2.5:7b", "timeoutMs": 8000,
-          "minConfidence": 0.6, "authority": "block", "required": false, "maxChars": 6000 } }
+          "minConfidence": 0.6, "authority": "block", "required": false, "maxChars": 6000,
+          "allowHosted": false, "hostedMaxChars": 3000,
+          "inputPricePerMTok": 0, "outputPricePerMTok": 0, "maxTokensPerDay": 0, "maxCostPerDay": 0,
+          "circuitFailures": 3, "circuitCooldownMs": 30000, "requireVerified": false } }
 ```
 
 ## Rules
@@ -357,7 +405,8 @@ npm run build; npm test
 
 31 tests. The engine's 28, in [engine/test](engine/test):
 - [gaps.test.mjs](engine/test/gaps.test.mjs) covers MW010, MW023, MW027–MW029, MW037–MW039 and MB006 on the engine (two engines sharing a registry stand in for two servers), and `mcpwatch scan`: every MS rule, tampering until `--accept`, and scanning a single command.
-- [ai.test.mjs](engine/test/ai.test.mjs) covers the AI reviewer against a stand-in model server. It checks that a finding the patterns miss is blocked and that the model can't clear a rule. It also covers answer checks, advise mode, model down and required, tool definitions and caching, withheld output, secrets masked before the model sees them, and live on/off. It needs no real model.
+- [ai.test.mjs](engine/test/ai.test.mjs) covers the AI reviewer against a stand-in model server. It checks that a finding the patterns miss is blocked and that the model can't clear a rule. It also covers answer checks, advise mode, model down and required, tool definitions and caching, withheld output, secrets masked before the model sees them, and live on/off. It also covers token and cost tracking, daily caps, failure kinds, the circuit breaker, hosted-model consent and masking, and `requireVerified`. It needs no real model.
+- [ai-eval.test.mjs](engine/test/ai-eval.test.mjs) covers the model check behind `mcpwatch ai`: the sample set, the scoring and pass marks, the command itself and the record of checked models.
 - [transport.test.mjs](engine/test/transport.test.mjs) covers MW030–MW036 on the engine.
 - [engine.test.mjs](engine/test/engine.test.mjs) covers `mcpwatch engine`, the sidecar the Python package uses: verdicts, redaction, HTTP refusals, mode changes and options.
 

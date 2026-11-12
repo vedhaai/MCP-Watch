@@ -29,12 +29,26 @@ export interface McpEvent {
   ai?: AiSummary;
 }
 
+// timeout: no answer in time. unreachable: connection failed. http: the server answered with an error.
+// auth: key refused. parse: answer was not usable. busy / budget / circuit: skipped without calling the model.
+// consent: the model is on another machine and the policy doesn't allow sending messages there (allowHosted).
+export type AiFailure = "timeout" | "unreachable" | "http" | "auth" | "parse" | "busy" | "budget" | "circuit" | "consent";
+
 export interface AiSummary {
   model: string;
   verdict: "allow" | "suspicious" | "block" | "error";
   ms: number;
   cached?: boolean;
   error?: string;
+  // Why no review happened, so failures can be counted by kind. Set together with `error`.
+  failure?: AiFailure;
+  // Tokens this review used, as the model server reported them (or estimated, see `tokensEstimated`).
+  // Absent for cached answers and for reviews that never reached the model.
+  promptTokens?: number;
+  completionTokens?: number;
+  tokensEstimated?: true;
+  // Cost in US dollars, only when the policy sets a price per million tokens.
+  costUsd?: number;
   // One plain sentence from the model on what the message does.
   summary?: string;
 }
