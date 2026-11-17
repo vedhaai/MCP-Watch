@@ -16,9 +16,12 @@ homepage = "https://github.com/vedhaai/MCP-Watch#rust"
 documentation = "https://docs.rs/mcpwatch"
 keywords = ["mcp", "model-context-protocol", "security", "guard", "prompt-injection"]
 categories = ["network-programming", "web-programming", "development-tools"]
-# Keep the published archive to the crate itself: the integration tests need the
-# repository's Node engine, which is not part of this package.
-exclude = ["tests/"]
+# An allow-list, not an exclude-list: it cannot accidentally ship a stray `.env`, an events log or
+# a file somebody adds later. `tests/` stays out because the integration tests need this
+# repository's Node engine, which is not part of the package; `check.sh` is for developing the
+# crate, not using it; and `rust-toolchain.toml` must never ship, or a vendored copy of this crate
+# could override the toolchain a consumer chose.
+include = ["src/**/*.rs", "README.md", "LICENSE", "Cargo.toml"]
 
 [features]
 # The tower layer, not the SDK guard, because `rmcp` has changed major version three times in 73
