@@ -2,7 +2,7 @@
 //!
 //! | You have | Use |
 //! |---|---|
-//! | A server built with the official Rust SDK (`rmcp`) | [`guard`] around its transport |
+//! | A server built with the official Rust SDK (`rmcp`) | `McpWatch::guard_stdio` around its transport |
 //! | axum, or anything that speaks tower | `mcpwatch::tower::McpWatchLayer` |
 //! | actix-web | `mcpwatch::actix::McpWatch` |
 //! | A server you cannot change | the `mcpwatch-proxy` binary |

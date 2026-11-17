@@ -31,7 +31,6 @@ default = ["tower"]
 rmcp = ["dep:rmcp", "tokio/io-std"]
 # A tower layer, for axum and anything else that speaks tower.
 tower = [
-    "dep:tower",
     "dep:tower-layer",
     "dep:tower-service",
     "dep:http",
@@ -60,8 +59,6 @@ tokio = { version = "1.48.0", features = ["process", "io-util", "sync", "rt", "t
 log = "0.4.28"
 
 rmcp = { version = "3.10.0", optional = true, default-features = false, features = ["server"] }
-futures = { version = "0.3.31", optional = true }
-tower = { version = "0.5.2", optional = true, default-features = false }
 tower-layer = { version = "0.3.3", optional = true }
 tower-service = { version = "0.3.3", optional = true }
 futures-util = { version = "0.3.31", optional = true, default-features = false, features = ["std"] }
@@ -78,6 +75,7 @@ tokio = { version = "1.48.0", features = ["full"] }
 # A real server for the HTTP tests. Mocks hide response buffering, the content length after a
 # rewrite, and whether an SSE stream still streams — which is most of what there is to get wrong.
 axum = "0.8.7"
+tower = "0.5.2"
 actix-web = { version = "4.11.0", features = ["macros"] }
 
 [[bin]]

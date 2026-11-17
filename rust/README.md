@@ -252,10 +252,7 @@ Releases are cut by hand from a maintainer's machine, as the npm, PyPI and Maven
 ones are.
 
 ```powershell
-cd rust
-cargo fmt --all --check
-cargo clippy --all-targets --features full -- -D warnings
-cargo test --features full
+./check.sh                              # format, clippy, tests, docs, features, MSRV, Windows
 cargo package --list --features full
 cargo publish --dry-run --features full
 cargo publish
@@ -280,6 +277,7 @@ Publishing needs a crates.io API token. Keep it on the maintainer's machine.
 npm run build -w engine   # from the repository root, once
 cd rust
 cargo test --features full
+./check.sh                # everything a CI job would check, including MSRV and Windows
 ```
 
 94 tests. Most run against a stub and need neither Node nor a built engine; the

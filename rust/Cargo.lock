@@ -1043,7 +1043,6 @@ dependencies = [
  "actix-web",
  "axum",
  "bytes",
- "futures",
  "futures-util",
  "http 1.5.0",
  "http-body",
