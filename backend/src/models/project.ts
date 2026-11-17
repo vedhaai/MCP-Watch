@@ -23,6 +23,8 @@ export interface Project {
   // Who reviews each message on top of the pattern rules: nobody (rules only), a local model, or a
   // model behind an API key. The guard calls the model itself; the dashboard only hands it these settings.
   ai: ProjectAi;
+  // Where to tell people when the guard finds something. Off until the owner turns it on.
+  alerts: ProjectAlerts;
   version: number;
   createdAt: string;
   lastSeenAt: string | null;
@@ -57,5 +59,38 @@ export interface ProjectAi {
   hostedConsent?: boolean;
 }
 
-export const LOCAL_AI = { url: "http://127.0.0.1:11434/v1", model: "qwen2.5:7b" };
+export type AlertSeverity = "high" | "medium" | "low";
+
+export interface ProjectAlerts {
+  enabled: boolean;
+  // Alert on an event whose worst finding is at least this severe.
+  minSeverity: AlertSeverity;
+  // Also alert whenever the guard blocked or throttled a message, whatever its findings.
+  onBlock: boolean;
+  // At most one alert per this many seconds; events in between are counted in the next one.
+  cooldownSeconds: number;
+  // Recipients, and the SMTP server that sends to them. Email is only sent when a host and a from address are set.
+  emails: string[];
+  smtpHost: string;
+  smtpPort: number;
+  // true: TLS from the first byte (port 465); false: STARTTLS when the server offers it.
+  smtpSecure: boolean;
+  smtpUser: string;
+  // Secret: stored encrypted, never sent back to the browser.
+  smtpPass: string;
+  smtpFrom: string;
+  // Secrets: a Slack incoming-webhook URL and a webhook URL both carry their access in the address.
+  // Stored encrypted and never sent back to the browser.
+  slackUrl: string;
+  webhookUrl: string;
+  // Signs each webhook body (HMAC-SHA256) so the receiver can tell it came from this dashboard.
+  webhookSecret: string;
+}
+
+export const ALERTS_OFF: ProjectAlerts = {
+  enabled: false, minSeverity: "high", onBlock: true, cooldownSeconds: 300, emails: [],
+  smtpHost: "", smtpPort: 587, smtpSecure: false, smtpUser: "", smtpPass: "", smtpFrom: "", slackUrl: "", webhookUrl: "", webhookSecret: "",
+};
+
+export const LOCAL_AI ={ url: "http://127.0.0.1:11434/v1", model: "qwen2.5:7b" };
 export const AI_OFF: ProjectAi = { provider: "off", url: "", model: "", apiKey: "" };

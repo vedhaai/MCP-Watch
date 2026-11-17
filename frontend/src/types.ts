@@ -53,6 +53,11 @@ export interface Project {
   requireAuth: boolean;
   expectedAudience: string;
   ai: { provider: AiProvider; url: string; model: string; keySet: boolean; keyHint: string; hostedConsent?: boolean };
+  alerts: {
+    enabled: boolean; minSeverity: Severity; onBlock: boolean; cooldownSeconds: number; emails: string[];
+    slackSet: boolean; slackHost: string; webhookSet: boolean; webhookHost: string; webhookSecretSet: boolean;
+    smtpHost: string; smtpPort: number; smtpSecure: boolean; smtpUser: string; smtpFrom: string; smtpPassSet: boolean;
+  };
   version: number;
   createdAt: string;
   lastSeenAt: string | null;

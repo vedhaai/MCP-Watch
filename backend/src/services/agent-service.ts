@@ -5,10 +5,11 @@ import type { ProjectRepository } from "../data/project-repository.js";
 import type { GuardConfig, GuardEvents, GuardHealth, Ok, Stored } from "../models/api.js";
 import type { Project } from "../models/project.js";
 import type { AiService } from "./ai-service.js";
+import type { AlertService } from "./alert-service.js";
 
 // What the guards use: they authenticate with the project key, poll for settings and report events.
 export class AgentService {
-  constructor(private projects: ProjectRepository, private events: EventRepository, private ai: AiService) {}
+  constructor(private projects: ProjectRepository, private events: EventRepository, private ai: AiService, private alerts: AlertService) {}
 
   projectForKey(key: string | undefined): Project | undefined {
     return this.projects.byKey(key ?? "");
@@ -39,6 +40,7 @@ export class AgentService {
     const events = items.map((e) => toMcpEvent(e as Record<string, unknown>)).filter((e): e is McpEvent => !!e);
     this.events.append(p.id, events);
     this.seen(p);
+    this.alerts.notify(p, events);
     return { ok: true, stored: events.length };
   }
 

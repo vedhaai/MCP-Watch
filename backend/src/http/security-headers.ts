@@ -10,7 +10,9 @@ import type { RequestHandler } from "express";
 // read from the file that is actually served, so editing the page updates the hash with it.
 function inlineScriptHashes(html: string): string[] {
   const inline = html.matchAll(/<script(?![^>]*\ssrc=)[^>]*>([\s\S]*?)<\/script>/gi);
-  return [...inline].map((m) => `'sha256-${createHash("sha256").update(m[1], "utf8").digest("base64")}'`);
+  // A browser turns CRLF (and a lone CR) into LF before it hashes an inline script, so the file's
+  // line endings must not change the hash: with CRLF on disk the script would be blocked.
+  return [...inline].map((m) => `'sha256-${createHash("sha256").update(m[1].replace(/\r\n?/g, "\n"), "utf8").digest("base64")}'`);
 }
 
 export function securityHeaders(indexFile: string): RequestHandler {

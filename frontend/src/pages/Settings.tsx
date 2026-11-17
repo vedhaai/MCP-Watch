@@ -4,6 +4,7 @@ import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
 import Checkbox from "@mui/material/Checkbox";
 import Collapse from "@mui/material/Collapse";
+import Divider from "@mui/material/Divider";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import MenuItem from "@mui/material/MenuItem";
 import Radio from "@mui/material/Radio";
@@ -14,7 +15,7 @@ import { api } from "../api";
 import { Label, useConfirm } from "../components/ui";
 import { useApp } from "../context";
 import { AI_CHOICES, AI_PROVIDERS, MODES, isHostedUrl } from "../lib";
-import type { AiProvider, Mode, Project } from "../types";
+import type { AiProvider, Mode, Project, Severity } from "../types";
 
 const list = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
 const Note = ({ children }: { children: React.ReactNode }) => <Typography sx={{ fontSize: 12, color: "text.secondary", mt: 0.75 }}>{children}</Typography>;
@@ -49,6 +50,46 @@ export function SettingsTab({ project: p, onChange }: { project: Project; onChan
   const [aiResult, setAiResult] = useState("");
   const [saved, setSaved] = useState("");
   const [name, setName] = useState(p.name);
+  const [alertsOn, setAlertsOn] = useState(p.alerts.enabled);
+  const [minSeverity, setMinSeverity] = useState<Severity>(p.alerts.minSeverity);
+  const [onBlock, setOnBlock] = useState(p.alerts.onBlock);
+  const [cooldown, setCooldown] = useState(String(Math.round(p.alerts.cooldownSeconds / 60)));
+  const [emails, setEmails] = useState(p.alerts.emails.join(", "));
+  // URLs and the secret are never sent to the browser: empty means "keep the saved one".
+  const [hooks, setHooks] = useState({ slackUrl: "", webhookUrl: "", webhookSecret: "", smtpPass: "" });
+  const [smtp, setSmtp] = useState({ smtpHost: p.alerts.smtpHost, smtpPort: String(p.alerts.smtpPort), smtpSecure: p.alerts.smtpSecure, smtpUser: p.alerts.smtpUser, smtpFrom: p.alerts.smtpFrom });
+  const [alertResult, setAlertResult] = useState("");
+  const noHooks = { slackUrl: "", webhookUrl: "", webhookSecret: "", smtpPass: "" };
+
+  const alertsForm = () => ({
+    enabled: alertsOn, minSeverity, onBlock, cooldownSeconds: Math.max(0, Number(cooldown) || 0) * 60, emails: list(emails), ...hooks,
+    ...smtp, smtpPort: Number(smtp.smtpPort) || 587,
+  });
+
+  const testAlerts = async () => {
+    setAlertResult("Sending…");
+    try {
+      const r = await api<{ results: { channel: string; ok: boolean; error?: string }[] }>(`/api/projects/${p.id}/alerts-test`, { method: "POST", body: alertsForm() });
+      setAlertResult(r.results.length ? r.results.map((x) => `${x.channel}: ${x.ok ? "sent" : `failed (${x.error})`}`).join(" · ") : "Nothing to send to yet: add an email, Slack or webhook URL.");
+    } catch (e) {
+      setAlertResult((e as Error).message);
+    }
+  };
+
+  const clearChannel = async (body: { clearSlack?: boolean; clearWebhook?: boolean; clearSmtp?: boolean }) => {
+    try {
+      // Removing email also drops its recipients, which can't be saved without a server.
+      const emailGone = body.clearSmtp ? { emails: [] as string[] } : {};
+      onChange(await api<Project>(`/api/projects/${p.id}`, { method: "PATCH", body: { alerts: { ...alertsForm(), ...noHooks, ...emailGone, ...body } } }));
+      setHooks(noHooks);
+      if (body.clearSmtp) {
+        setEmails("");
+        setSmtp({ smtpHost: "", smtpPort: "587", smtpSecure: false, smtpUser: "", smtpFrom: "" });
+      }
+    } catch (e) {
+      setAlertResult((e as Error).message);
+    }
+  };
 
   // Projects saved before the consent existed have none and keep working, so an API project shows it as given.
   const [consent, setConsent] = useState(p.ai.hostedConsent ?? p.ai.provider === "api");
@@ -75,9 +116,10 @@ export function SettingsTab({ project: p, onChange }: { project: Project; onChan
     try {
       onChange(await api<Project>(`/api/projects/${p.id}`, { method: "PATCH", body: {
         mode, windowSeconds, throttleAt, blockAt,
-        denyTools: list(deny), allowedOrigins: list(origins), requireAuth, ai: aiForm(), expectedAudience: audience,
+        denyTools: list(deny), allowedOrigins: list(origins), requireAuth, ai: aiForm(), expectedAudience: audience, alerts: alertsForm(),
       } }));
       setRemote((r) => ({ ...r, apiKey: "" }));
+      setHooks(noHooks);
       setSaved("Saved.");
       refreshProjects();
     } catch (e) {
@@ -169,6 +211,70 @@ export function SettingsTab({ project: p, onChange }: { project: Project; onChan
             <Button variant="outlined" color="inherit" onClick={testAi}>Test AI</Button>
             <Typography sx={{ fontSize: 13, color: "text.secondary" }}>{aiResult}</Typography>
           </Box>
+        </Section>
+
+        <Section title="Alerts">
+          <Note>Get told when the guard finds something, by email, Slack or a webhook. Alerts name the rule, tool and server, never the message text.</Note>
+          <FormControlLabel sx={{ mt: 1 }} control={<Checkbox size="small" checked={alertsOn} onChange={(e) => setAlertsOn(e.target.checked)} />} label="Send alerts" />
+          <Collapse in={alertsOn}>
+            <Box sx={{ ml: 3.5, mt: 1 }}>
+              <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 1.5 }}>
+                <TextField select label="Alert on findings of" value={minSeverity} onChange={(e) => setMinSeverity(e.target.value as Severity)}>
+                  <MenuItem value="high">High severity</MenuItem>
+                  <MenuItem value="medium">Medium and above</MenuItem>
+                  <MenuItem value="low">Any finding</MenuItem>
+                </TextField>
+                <TextField label="At most one alert every (minutes)" type="number" value={cooldown} onChange={(e) => setCooldown(e.target.value)} slotProps={{ htmlInput: { min: 0 } }} />
+              </Box>
+              <FormControlLabel sx={{ mt: 1 }} control={<Checkbox size="small" checked={onBlock} onChange={(e) => setOnBlock(e.target.checked)} />}
+                label="Also alert whenever a message is blocked or throttled" />
+              <Note>Alerts that arrive during the wait are counted in the next one, so a noisy attack sends one message, not hundreds.</Note>
+
+              <Divider sx={{ my: 2.5 }} />
+              <Typography sx={{ fontWeight: 600, fontSize: 14 }}>Email</Typography>
+              <Note>Email is sent only when an SMTP server, a from address and at least one recipient are filled in. Leave them empty to skip email.</Note>
+              <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 1.5, mt: 1.5 }}>
+                <TextField label="SMTP host" placeholder="smtp.example.com" value={smtp.smtpHost} onChange={(e) => setSmtp({ ...smtp, smtpHost: e.target.value })} />
+                <TextField label="Port" select value={smtp.smtpPort} onChange={(e) => setSmtp({ ...smtp, smtpPort: e.target.value, smtpSecure: e.target.value === "465" })}>
+                  {["587", "465", "25", "2525"].map((v) => <MenuItem key={v} value={v}>{v}{v === "587" ? " (STARTTLS)" : v === "465" ? " (TLS)" : ""}</MenuItem>)}
+                </TextField>
+                <TextField label="Username" autoComplete="off" value={smtp.smtpUser} onChange={(e) => setSmtp({ ...smtp, smtpUser: e.target.value })} />
+                <TextField label="Password" type="password" autoComplete="off" value={hooks.smtpPass}
+                  placeholder={p.alerts.smtpPassSet ? "Saved. Leave empty to keep it" : ""} slotProps={{ inputLabel: { shrink: true } }}
+                  onChange={(e) => setHooks({ ...hooks, smtpPass: e.target.value })} />
+                <TextField label="From address" placeholder="alerts@example.com" value={smtp.smtpFrom} onChange={(e) => setSmtp({ ...smtp, smtpFrom: e.target.value })} />
+              </Box>
+              <TextField fullWidth sx={{ mt: 1.5 }} label="Send to (comma separated)" placeholder="security@example.com" value={emails} onChange={(e) => setEmails(e.target.value)} />
+              <Note>The password is stored encrypted and never shown again. The mail server has to be reachable on the internet.</Note>
+              {p.alerts.smtpHost && <Button size="small" color="inherit" sx={{ mt: 0.5 }} onClick={() => clearChannel({ clearSmtp: true })}>Remove email</Button>}
+
+              <Divider sx={{ my: 2.5 }} />
+              <Typography sx={{ fontWeight: 600, fontSize: 14 }}>Slack</Typography>
+              <Note>Posts a message to a Slack channel through an incoming webhook.</Note>
+              <TextField fullWidth sx={{ mt: 1.5 }} label="Slack incoming webhook URL" type="password" autoComplete="off" value={hooks.slackUrl}
+                placeholder={p.alerts.slackSet ? `Saved (${p.alerts.slackHost}). Leave empty to keep it` : "https://hooks.slack.com/services/…"}
+                slotProps={{ inputLabel: { shrink: true } }} onChange={(e) => setHooks({ ...hooks, slackUrl: e.target.value })} />
+              {p.alerts.slackSet && <Button size="small" color="inherit" sx={{ mt: 0.5 }} onClick={() => clearChannel({ clearSlack: true })}>Remove Slack</Button>}
+
+              <Divider sx={{ my: 2.5 }} />
+              <Typography sx={{ fontWeight: 600, fontSize: 14 }}>Webhook</Typography>
+              <Note>Sends each alert as JSON to a URL of your own.</Note>
+              <TextField fullWidth sx={{ mt: 1.5 }} label="Webhook URL" type="password" autoComplete="off" value={hooks.webhookUrl}
+                placeholder={p.alerts.webhookSet ? `Saved (${p.alerts.webhookHost}). Leave empty to keep it` : "https://example.com/mcpwatch-alerts"}
+                slotProps={{ inputLabel: { shrink: true } }} onChange={(e) => setHooks({ ...hooks, webhookUrl: e.target.value })} />
+              <TextField fullWidth sx={{ mt: 1.5, maxWidth: 420 }} label="Signing secret (optional)" type="password" autoComplete="off" value={hooks.webhookSecret}
+                placeholder={p.alerts.webhookSecretSet ? "Saved. Leave empty to keep it" : "Used to sign each request"}
+                slotProps={{ inputLabel: { shrink: true } }} onChange={(e) => setHooks({ ...hooks, webhookSecret: e.target.value })} />
+              <Note>Each alert is a JSON POST. With a secret, requests carry X-MCPWatch-Timestamp and X-MCPWatch-Signature: sha256=HMAC(secret, timestamp + "." + body). Slack and webhook URLs are stored encrypted and never shown again.</Note>
+              {p.alerts.webhookSet && <Button size="small" color="inherit" sx={{ mt: 0.5 }} onClick={() => clearChannel({ clearWebhook: true })}>Remove webhook</Button>}
+
+              <Divider sx={{ my: 2.5 }} />
+              <Box sx={{ display: "flex", gap: 1.25, alignItems: "center", flexWrap: "wrap" }}>
+                <Button variant="outlined" color="inherit" onClick={testAlerts}>Send test alert</Button>
+                <Typography sx={{ fontSize: 13, color: "text.secondary" }}>{alertResult}</Typography>
+              </Box>
+            </Box>
+          </Collapse>
         </Section>
 
         <Section title="Transport (HTTP servers)">

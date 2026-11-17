@@ -5,6 +5,7 @@ import { SessionRepository } from "../data/session-repository.js";
 import { UserRepository } from "../data/user-repository.js";
 import { AgentService } from "./agent-service.js";
 import { AiService } from "./ai-service.js";
+import { AlertService } from "./alert-service.js";
 import { AuthService } from "./auth-service.js";
 import { MetaService } from "./meta-service.js";
 import { ProjectService } from "./project-service.js";
@@ -35,11 +36,12 @@ export function createServices({ port, dataDir, localEventsFile }: DashboardConf
   const eventRepo = new EventRepository(dataDir, localEventsFile);
   const userRepo = new UserRepository(dataDir);
   const ai = new AiService();
-  const projects = new ProjectService(projectRepo, eventRepo, ai);
+  const alerts = new AlertService();
+  const projects = new ProjectService(projectRepo, eventRepo, ai, alerts);
   return {
     auth: new AuthService(userRepo, new SessionRepository(dataDir), projects),
     projects,
-    agent: new AgentService(projectRepo, eventRepo, ai),
+    agent: new AgentService(projectRepo, eventRepo, ai, alerts),
     meta: new MetaService(`http://127.0.0.1:${port}`, eventRepo, userRepo),
   };
 }

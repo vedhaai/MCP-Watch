@@ -404,7 +404,8 @@ test("dashboard: every response carries its security headers, and the CSP fits t
   const inline = [...html.matchAll(/<script(?![^>]*\ssrc=)[^>]*>([\s\S]*?)<\/script>/gi)].map((m) => m[1]);
   assert.ok(inline.length > 0, "the page has the inline theme script this guards");
   for (const body of inline) {
-    const hash = createHash("sha256").update(body, "utf8").digest("base64");
+    // A browser hashes the script after turning CRLF into LF, so a CRLF file (a Windows checkout) must still match.
+    const hash = createHash("sha256").update(body.replace(/\r\n?/g, "\n"), "utf8").digest("base64");
     assert.ok(scriptSrc.includes(`'sha256-${hash}'`), `an inline script is not covered by the CSP: ${body.slice(0, 60)}…`);
   }
 

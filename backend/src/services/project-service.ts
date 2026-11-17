@@ -2,8 +2,9 @@ import { randomBytes, randomUUID } from "node:crypto";
 import type { EventRepository } from "../data/event-repository.js";
 import type { ProjectRepository } from "../data/project-repository.js";
 import { HttpError } from "../errors.js";
-import type { AiSettingsInput, AiTestResult, NewProject, ProjectPatch, ProjectView } from "../models/api.js";
-import { AI_OFF, type Project } from "../models/project.js";
+import type { AiSettingsInput, AiTestResult, AlertSettingsInput, AlertTestResult, NewProject, ProjectPatch, ProjectView } from "../models/api.js";
+import { AI_OFF, ALERTS_OFF, type Project } from "../models/project.js";
+import { type AlertService, alertHost } from "./alert-service.js";
 import type { AiService } from "./ai-service.js";
 
 export const newKey = () => "mw_" + randomBytes(24).toString("base64url");
@@ -13,13 +14,20 @@ export const eventLimit = (limit?: number) => Math.min(Math.max(1, Math.floor(li
 
 export function forBrowser(p: Project): ProjectView {
   const { apiKey, ...ai } = p.ai;
-  return { ...p, ai: { ...ai, keySet: !!apiKey, keyHint: apiKey ? `…${apiKey.slice(-4)}` : "" } };
+  const { slackUrl, webhookUrl, webhookSecret, smtpPass, ...alerts } = p.alerts;
+  return {
+    ...p, ai: { ...ai, keySet: !!apiKey, keyHint: apiKey ? `…${apiKey.slice(-4)}` : "" },
+    alerts: {
+      ...alerts, slackSet: !!slackUrl, webhookSet: !!webhookUrl, webhookSecretSet: !!webhookSecret, smtpPassSet: !!smtpPass,
+      slackHost: alertHost(slackUrl), webhookHost: alertHost(webhookUrl),
+    },
+  };
 }
 
 // A signed-in user's projects. Every call takes the user's id, and someone else's project looks the
 // same as a missing one.
 export class ProjectService {
-  constructor(private projects: ProjectRepository, private eventRepo: EventRepository, private ai: AiService) {}
+  constructor(private projects: ProjectRepository, private eventRepo: EventRepository, private ai: AiService, private alerts: AlertService) {}
 
   private owned(ownerId: string, id: string): Project {
     const p = this.projects.byId(id);
@@ -40,7 +48,7 @@ export class ProjectService {
     if (!name) throw new HttpError(400, "name is required");
     return forBrowser(this.projects.insert({
       id: randomUUID(), ownerId, name, kind: input.kind ?? "middleware", key: newKey(), mode: "observe", windowSeconds: 60, throttleAt: 3, blockAt: 6,
-      denyTools: [], clients: { block: [], allow: [] }, allowedOrigins: [], requireAuth: false, expectedAudience: "", ai: { ...AI_OFF }, version: 1,
+      denyTools: [], clients: { block: [], allow: [] }, allowedOrigins: [], requireAuth: false, expectedAudience: "", ai: { ...AI_OFF }, alerts: { ...ALERTS_OFF }, version: 1,
       createdAt: new Date().toISOString(), lastSeenAt: null,
     }));
   }
@@ -70,6 +78,12 @@ export class ProjectService {
     const ai = this.ai.fromInput(input, p.ai);
     await this.ai.assertAllowed(ai);
     return this.ai.test(ai);
+  }
+
+  // Sends a sample alert through the channels in these settings (saved, or the unsaved ones in the form).
+  async testAlerts(ownerId: string, id: string, input: AlertSettingsInput): Promise<AlertTestResult> {
+    const p = this.owned(ownerId, id);
+    return this.alerts.test(p, await this.alerts.fromInput(input, p.alerts));
   }
 
   events(ownerId: string, id: string, limit?: number): unknown[] {
@@ -120,6 +134,7 @@ export class ProjectService {
       out.ai = this.ai.fromInput(body.ai, current.ai);
       await this.ai.assertAllowed(out.ai);
     }
+    if (body.alerts !== undefined) out.alerts = await this.alerts.fromInput(body.alerts, current.alerts);
     if (body.expectedAudience !== undefined) out.expectedAudience = body.expectedAudience.trim().slice(0, 300);
     if (body.clients !== undefined) out.clients = { block: body.clients.block.slice(0, 500), allow: body.clients.allow.slice(0, 500) };
     return out;

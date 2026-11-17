@@ -1,5 +1,5 @@
 import type { Mode } from "@vedhaai/mcpwatch";
-import type { AiProvider, ClientLists, Project, ProjectAi, ProjectKind } from "./project.js";
+import type { AiProvider, AlertSeverity, ClientLists, Project, ProjectAi, ProjectAlerts, ProjectKind } from "./project.js";
 
 // What the API takes and returns. tsoa checks request bodies against these types; the services do the
 // checks a type can't express (trimming, URLs, positive numbers).
@@ -34,6 +34,32 @@ export interface AiSettingsInput {
   hostedConsent?: boolean;
 }
 
+// Alert settings from the form. An empty URL or secret keeps the saved one; the matching `clear*` removes it.
+export interface AlertSettingsInput {
+  enabled: boolean;
+  minSeverity: AlertSeverity;
+  onBlock: boolean;
+  cooldownSeconds: number;
+  emails?: string[];
+  // SMTP server for email. An empty `smtpPass` keeps the saved one; `clearSmtp` removes the whole server.
+  smtpHost?: string;
+  smtpPort?: number;
+  smtpSecure?: boolean;
+  smtpUser?: string;
+  smtpPass?: string;
+  smtpFrom?: string;
+  clearSmtp?: boolean;
+  slackUrl?: string;
+  clearSlack?: boolean;
+  webhookUrl?: string;
+  clearWebhook?: boolean;
+  webhookSecret?: string;
+}
+
+export interface AlertTestResult {
+  results: { channel: "email" | "slack" | "webhook"; ok: boolean; error?: string }[];
+}
+
 export interface ProjectPatch {
   name?: string;
   mode?: Mode;
@@ -45,12 +71,18 @@ export interface ProjectPatch {
   requireAuth?: boolean;
   expectedAudience?: string;
   ai?: AiSettingsInput;
+  alerts?: AlertSettingsInput;
   clients?: ClientLists;
 }
 
-// A project as the browser sees it: the AI key only as a hint that one is saved.
-export interface ProjectView extends Omit<Project, "ai"> {
+// A project as the browser sees it: the AI key and the alert URLs only as hints that one is saved.
+export interface ProjectView extends Omit<Project, "ai" | "alerts"> {
   ai: Omit<ProjectAi, "apiKey"> & { keySet: boolean; keyHint: string };
+  alerts: Omit<ProjectAlerts, "slackUrl" | "webhookUrl" | "webhookSecret" | "smtpPass"> & {
+    slackSet: boolean; webhookSet: boolean; webhookSecretSet: boolean; smtpPassSet: boolean;
+    // Host only (hooks.slack.com), never the path that holds the token.
+    slackHost: string; webhookHost: string;
+  };
 }
 
 export interface AiTestResult {

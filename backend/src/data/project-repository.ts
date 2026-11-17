@@ -1,9 +1,17 @@
 import path from "node:path";
-import { AI_OFF, type Project } from "../models/project.js";
+import { AI_OFF, ALERTS_OFF, type Project, type ProjectAlerts } from "../models/project.js";
 import { readJson, writeJson } from "./json-files.js";
 import { SecretBox } from "./secret-box.js";
 
-const PROJECT_DEFAULTS: Partial<Project> = { allowedOrigins: [], requireAuth: false, expectedAudience: "", ai: AI_OFF };
+const PROJECT_DEFAULTS: Partial<Project> = { allowedOrigins: [], requireAuth: false, expectedAudience: "", ai: AI_OFF, alerts: ALERTS_OFF };
+const ALERT_SECRETS = ["slackUrl", "webhookUrl", "webhookSecret", "smtpPass"] as const;
+
+// Secrets are encrypted on disk and plain in memory.
+const mapAlertSecrets = (a: ProjectAlerts, fn: (s: string) => string): ProjectAlerts => {
+  const out = { ...ALERTS_OFF, ...a };
+  for (const k of ALERT_SECRETS) if (out[k]) out[k] = fn(out[k]);
+  return out;
+};
 
 // All projects in one JSON file (projects.json), kept in memory and written on every change.
 export class ProjectRepository {
@@ -18,13 +26,20 @@ export class ProjectRepository {
     // Projects saved before a setting existed get its default. Secrets are encrypted on disk and plain in memory.
     this.projects = stored
       .map(({ aiReview, ...p }) => ({ ...PROJECT_DEFAULTS, ...(aiReview ? { ai: { ...AI_OFF, provider: "local" as const } } : {}), ...p }))
-      .map((p) => ({ ...p, key: this.box.open(p.key), ai: { ...p.ai, ...(p.ai.apiKey ? { apiKey: this.box.open(p.ai.apiKey) } : {}) } }));
+      .map((p) => ({
+        ...p, key: this.box.open(p.key), ai: { ...p.ai, ...(p.ai.apiKey ? { apiKey: this.box.open(p.ai.apiKey) } : {}) },
+        alerts: mapAlertSecrets(p.alerts, (s) => this.box.open(s)),
+      }));
     // Keys written by an older version are in the clear: encrypt them now.
-    if (stored.some((p) => (p.key && !this.box.isSealed(p.key)) || (p.ai?.apiKey && !this.box.isSealed(p.ai.apiKey)))) this.save();
+    if (stored.some((p) => (p.key && !this.box.isSealed(p.key)) || (p.ai?.apiKey && !this.box.isSealed(p.ai.apiKey))
+      || ALERT_SECRETS.some((k) => p.alerts?.[k] && !this.box.isSealed(p.alerts[k])))) this.save();
   }
 
   private save() {
-    writeJson(this.file, this.projects.map((p) => ({ ...p, key: this.box.seal(p.key), ai: { ...p.ai, ...(p.ai.apiKey ? { apiKey: this.box.seal(p.ai.apiKey) } : {}) } })));
+    writeJson(this.file, this.projects.map((p) => ({
+      ...p, key: this.box.seal(p.key), ai: { ...p.ai, ...(p.ai.apiKey ? { apiKey: this.box.seal(p.ai.apiKey) } : {}) },
+      alerts: mapAlertSecrets(p.alerts, (s) => this.box.seal(s)),
+    })));
   }
 
   all(): Project[] {

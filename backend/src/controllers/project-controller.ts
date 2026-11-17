@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Patch, Path, Post, Query, Request, Response, Route, Security, SuccessResponse, Tags } from "@tsoa/runtime";
 import type { SessionRequest } from "../http/authentication.js";
-import type { AiSettingsInput, AiTestResult, NewProject, Ok, ProjectPatch, ProjectView } from "../models/api.js";
+import type { AiSettingsInput, AiTestResult, AlertSettingsInput, AlertTestResult, NewProject, Ok, ProjectPatch, ProjectView } from "../models/api.js";
 import type { Services } from "../services/index.js";
 import type { ProjectService } from "../services/project-service.js";
 
@@ -64,6 +64,14 @@ export class ProjectController extends Controller {
   @Response(404, "Project not found")
   public testAi(@Request() req: SessionRequest, @Path() id: string, @Body() body: AiSettingsInput): Promise<AiTestResult> {
     return this.projects.testAi(req.user.id, id, body);
+  }
+
+  /** Sends a sample alert to the channels in these settings (an empty URL or secret uses the saved one). */
+  @Post("{id}/alerts-test")
+  @Response(400, "Invalid alert settings")
+  @Response(404, "Project not found")
+  public testAlerts(@Request() req: SessionRequest, @Path() id: string, @Body() body: AlertSettingsInput): Promise<AlertTestResult> {
+    return this.projects.testAlerts(req.user.id, id, body);
   }
 
   /** The project's most recent events, oldest first. */
