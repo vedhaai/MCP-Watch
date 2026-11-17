@@ -2,9 +2,9 @@
 name = "mcpwatch"
 version = "0.1.0"
 edition = "2024"
-# rmcp 3.x needs 1.88. The crate itself would build on less, but a guard that
-# cannot be used with the SDK it guards is not worth the wider floor.
-rust-version = "1.88"
+# Current stable. This is the *minimum* a user needs, so raising it narrows who can install the
+# crate; the code itself only needs 1.88, which is also rmcp's own floor.
+rust-version = "1.100"
 description = "Security guard for MCP servers in Rust: the official Rust SDK (rmcp), axum/tower, actix-web"
 readme = "README.md"
 license = "MIT"
@@ -18,7 +18,12 @@ categories = ["network-programming", "web-programming", "development-tools"]
 exclude = ["tests/"]
 
 [features]
-default = ["rmcp"]
+# The tower layer, not the SDK guard, because `rmcp` has changed major version three times in 73
+# releases. A default-on `rmcp` would put our 3.x beside a user's 4.x the day that lands, and
+# `GuardedTransport` would implement the wrong crate's `Transport` for people who never asked for
+# it. The Java package makes the MCP SDK `provided` scope for the same reason; an optional feature
+# that is off by default is Cargo's nearest equivalent.
+default = ["tower"]
 # The official Rust MCP SDK: guards a server transport. `io-std` is what `guard_stdio` needs.
 rmcp = ["dep:rmcp", "tokio/io-std"]
 # A tower layer, for axum and anything else that speaks tower.
