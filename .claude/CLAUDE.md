@@ -25,6 +25,7 @@ Repo: https://github.com/vedhaai/MCP-Watch · License: MIT · Node >= 20.
 | `frontend/` | private | Dashboard web app (React, TypeScript, MUI, Vite). Builds into `backend/public/`. |
 | `python/` | `vedhaai-mcpwatch` (PyPI) | Python adapter; spawns `mcpwatch engine` as a child process. |
 | `java/` | `ai.vedha:mcpwatch` (Maven) | Java adapter (MCP Java SDK, servlet filter); also spawns the engine. |
+| `rust/` | `mcpwatch` (crates.io) | Rust adapter (rmcp transport, tower/axum layer, actix-web, `mcpwatch-proxy`); also spawns the engine. |
 | `docs/` | | `architecture.svg` |
 
 Key engine files: `engine.ts` (`fromClient` / `fromServer`), `rules.ts`, `state.ts`, `ai.ts`, `policy.ts`, `pins.ts`, `scan.ts`, `middleware.ts`, `stdio-proxy.ts`, `http-proxy.ts`, `engine-server.ts`, `headerwatch.ts`/`events.ts` (reporting).

@@ -1,0 +1,94 @@
+[package]
+name = "mcpwatch"
+version = "0.1.0"
+edition = "2024"
+# The *minimum* a user needs, not what we build with: rust-toolchain.toml pins development and CI
+# to current stable. 1.88 is what the code actually requires (let-chains) and is also rmcp's own
+# floor, so it shuts nobody out who could use the crate anyway. Raising it would only turn
+# "MCPWatch guards your server" into "MCPWatch guards your server, once you upgrade Rust".
+# Verified by building the whole package with 1.88; CI checks it on every change.
+rust-version = "1.88"
+description = "Security guard for MCP servers in Rust: the official Rust SDK (rmcp), axum/tower, actix-web"
+readme = "README.md"
+license = "MIT"
+repository = "https://github.com/vedhaai/MCP-Watch"
+homepage = "https://github.com/vedhaai/MCP-Watch#rust"
+documentation = "https://docs.rs/mcpwatch"
+# crates.io caps a keyword at 20 characters, so "model-context-protocol" (22) cannot be used here
+# as it is in package.json and pyproject.toml. The limit is enforced server-side, after upload.
+keywords = ["mcp", "mcp-server", "security", "guard", "prompt-injection"]
+categories = ["network-programming", "web-programming", "development-tools"]
+# An allow-list, not an exclude-list: it cannot accidentally ship a stray `.env`, an events log or
+# a file somebody adds later. `tests/` stays out because the integration tests need this
+# repository's Node engine, which is not part of the package; `check.sh` is for developing the
+# crate, not using it; and `rust-toolchain.toml` must never ship, or a vendored copy of this crate
+# could override the toolchain a consumer chose.
+include = ["src/**/*.rs", "README.md", "LICENSE", "Cargo.toml"]
+
+[features]
+# The tower layer, not the SDK guard, because `rmcp` has changed major version three times in 73
+# releases. A default-on `rmcp` would put our 3.x beside a user's 4.x the day that lands, and
+# `GuardedTransport` would implement the wrong crate's `Transport` for people who never asked for
+# it. The Java package makes the MCP SDK `provided` scope for the same reason; an optional feature
+# that is off by default is Cargo's nearest equivalent.
+default = ["tower"]
+# The official Rust MCP SDK: guards a server transport. `io-std` is what `guard_stdio` needs.
+rmcp = ["dep:rmcp", "tokio/io-std"]
+# A tower layer, for axum and anything else that speaks tower.
+tower = [
+    "dep:tower-layer",
+    "dep:tower-service",
+    "dep:http",
+    "dep:http-body",
+    "dep:http-body-util",
+    "dep:bytes",
+    "dep:futures-util",
+    "dep:pin-project-lite",
+]
+# actix-web middleware, over the same framework-free HTTP guard.
+actix = ["dep:actix-web", "dep:actix-http", "dep:bytes", "dep:futures-util"]
+# The `mcpwatch-proxy` binary: guards a server whose code you cannot change.
+proxy = ["tokio/io-std", "tokio/process", "tokio/signal", "tokio/rt-multi-thread"]
+# Everything, for CI and for `cargo doc`.
+full = ["rmcp", "tower", "actix", "proxy"]
+
+[dependencies]
+# The sidecar protocol is JSON lines, and the engine's options are a JSON object.
+serde_json = "1.0.145"
+serde = { version = "1.0.228", features = ["derive"] }
+# Process supervision, the pipes to the engine, and the per-direction queues.
+tokio = { version = "1.48.0", features = ["process", "io-util", "sync", "rt", "time", "macros"] }
+# Warnings about a guard that cannot reach its engine must reach the host's logs,
+# whatever the host uses. `log` is the Rust equivalent of the Java package's SLF4J:
+# a facade, with no implementation forced on the application.
+log = "0.4.28"
+
+rmcp = { version = "3.10.0", optional = true, default-features = false, features = ["server"] }
+tower-layer = { version = "0.3.3", optional = true }
+tower-service = { version = "0.3.3", optional = true }
+futures-util = { version = "0.3.31", optional = true, default-features = false, features = ["std"] }
+http = { version = "1.3.1", optional = true }
+http-body = { version = "1.0.1", optional = true }
+http-body-util = { version = "0.1.3", optional = true }
+bytes = { version = "1.10.1", optional = true }
+pin-project-lite = { version = "0.2.16", optional = true }
+actix-web = { version = "4.11.0", optional = true, default-features = false }
+actix-http = { version = "3.11.0", optional = true, default-features = false }
+
+[dev-dependencies]
+tokio = { version = "1.48.0", features = ["full"] }
+# A real server for the HTTP tests. Mocks hide response buffering, the content length after a
+# rewrite, and whether an SSE stream still streams — which is most of what there is to get wrong.
+axum = "0.8.7"
+tower = "0.5.2"
+actix-web = { version = "4.11.0", features = ["macros"] }
+
+[[bin]]
+name = "mcpwatch-proxy"
+path = "src/bin/mcpwatch_proxy.rs"
+required-features = ["proxy"]
+
+[package.metadata.docs.rs]
+# Every adapter should be visible on docs.rs, not just the default feature.
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

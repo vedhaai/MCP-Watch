@@ -47,6 +47,8 @@ The repo is an npm workspace. Each part has its own folder, package and tests:
 | [backend/](backend) | `@vedhaai/mcpwatch-dashboard` (npm) | Its own process: `npx @vedhaai/mcpwatch-dashboard` | The engine's public exports: the rule catalog, default policy and `AiReviewer` (for Test AI) |
 | [frontend/](frontend) | private, not published | In the browser; its build goes into `backend/public/`, which the backend serves and ships | The backend's `/api/*` |
 | [python/](python) | `vedhaai-mcpwatch` (PyPI) | Inside your Python MCP server | The engine, started as `mcpwatch engine` |
+| [java/](java) | `ai.vedha:mcpwatch` (Maven) | Inside your Java MCP server | The engine, started as `mcpwatch engine` |
+| [rust/](rust) | `mcpwatch` (crates.io) | Inside your Rust MCP server | The engine, started as `mcpwatch engine` |
 
 The engine never depends on the dashboard, so a guard works without one: events then go to `~/.mcpwatch/events.jsonl`.
 
@@ -60,9 +62,9 @@ The engine never depends on the dashboard, so a guard works without one: events 
 | **Reporting** | [headerwatch.ts](engine/src/headerwatch.ts), [events.ts](engine/src/events.ts) | Batches events to `POST /api/agent/events` about once a second and polls `GET /api/agent/config` every 5 s. It uses the same agent API as Headerwatch, so a Headerwatch server works too. |
 | **Scan** | [scan.ts](engine/src/scan.ts) | `mcpwatch scan` runs before any server starts. It checks the MCP server lists of Claude Desktop, Claude Code, Cursor, VS Code and Windsurf (MS001–MS007). |
 
-### Five ways in
+### Six ways in
 
-All five run the same `Engine`. Only the wrapping differs.
+All six run the same `Engine`. Only the wrapping differs.
 
 | Mode | File | Sits between | Use when |
 |---|---|---|---|
@@ -71,13 +73,16 @@ All five run the same `Engine`. Only the wrapping differs.
 | HTTP proxy | [http-proxy.ts](engine/src/http-proxy.ts) | The client and a remote Streamable HTTP URL, including SSE streams | A remote server |
 | Python middleware | [python/mcpwatch](python/mcpwatch), [engine-server.ts](engine/src/engine-server.ts) | The Python SDK's streams (stdio, SSE), or the HTTP layer (ASGI, WSGI, Django middleware) | You own a Python server: MCP SDK, Django, Flask, FastAPI |
 | Java middleware | [java/src/main/java](java/src/main/java/ai/vedha/mcpwatch), [engine-server.ts](engine/src/engine-server.ts) | The Java SDK's transport provider and session, or the servlet chain | You own a Java server: MCP Java SDK, Spring Boot, Quarkus, Jetty, Tomcat |
+| Rust middleware | [rust/src](rust/src), [engine-server.ts](engine/src/engine-server.ts) | The Rust SDK's transport, or a tower / actix-web stack | You own a Rust server: rmcp, axum, actix-web |
 
-**Python and Java.** Neither package re-implements the rules. Each starts `mcpwatch engine` as a child process: one engine per guarded server, with one JSON line per message each way. Both sides only move messages, so a Python or Java server gets exactly the verdicts a Node one would.
+**Python, Java and Rust.** None of these packages re-implements the rules. Each starts `mcpwatch engine` as a child process: one engine per guarded server, with one JSON line per message each way. Both sides only move messages, so a Python or Java server gets exactly the verdicts a Node one would.
 
 - **Python MCP SDK** (`mcpwatch(server)`): wraps the low-level `Server.run`, so stdio and SSE streams are checked, and wraps the app from `streamable_http_app()`.
 - **Python HTTP adapters** ([http.py](python/mcpwatch/http.py), shared by ASGI, WSGI and Django): a port of the HTTP proxy's handling. They read the POST body, check JSON and SSE responses, and track session ids.
 - **Java MCP SDK** (`McpWatch.guard(provider)`): wraps the transport provider. When the server registers its session factory, each new connection gets a guarded `McpServerTransport` (server → client) and a guarded `McpServerSession` (client → server). That covers stdio and HTTP+SSE.
 - **Java servlet filter** ([McpWatchFilter](java/src/main/java/ai/vedha/mcpwatch/http/McpWatchFilter.java), over [HttpGuard](java/src/main/java/ai/vedha/mcpwatch/http/HttpGuard.java)): the same port of the HTTP proxy's handling as Python's, for Spring Boot, Quarkus, Jetty, Tomcat — and for Streamable HTTP, where the request headers the transport rules need are only available in the servlet chain.
+- **Rust SDK** (`watch.guard_stdio()`): wraps an `rmcp` transport. The guard owns the newline-delimited framing itself, so the outbound direction never round-trips through the SDK's typed model — a message the engine rewrote reaches the wire exactly as the engine wrote it. That covers stdio and any byte stream.
+- **Rust tower layer and actix-web middleware** ([rust/src/http](rust/src/http)): a third port of the HTTP proxy's handling, shared by both frameworks so there is one implementation and one test suite. As for Java, this is what guards Streamable HTTP.
 
 If the engine can't start, the adapter's own `fail_open` / `failOpen` decides (default: refuse the request with `-32001`; set it true to pass messages through unchecked). A guard error inside the Node engine follows the engine's `failOpen`, which defaults to refusing in the same way.
 
@@ -176,5 +181,6 @@ With a project key, the project's settings win over the guard's local options an
 - **State per process.** Each guard keeps its own sessions and scores. Only pins and the registry are shared, through files.
 - **The AI adds latency and misses things.** A 7B model takes about 0.4–1 s per reviewed message, longer while it loads. In testing it missed a metadata-URL SSRF that MW003 caught. That's why the rules keep the final say.
 - **Polling, not streaming.** The page refreshes every 2 seconds and guards fetch settings every 5.
-- **Python and Java servers need Node.** Both packages are thin adapters; the engine is the Node one. Each check is a round trip over a local pipe: about 0.3 ms on a laptop without AI review. Two adapters can't send a reply to the server for a refused server-to-client request (sampling, elicitation): Python's Django middleware and Java's servlet filter both drop the request and log it. Wrap the app with `McpWatchASGI` / `McpWatchWSGI`, or guard the Java SDK transport with `McpWatch.guard(provider)`, if your server sends those.
+- **Python, Java and Rust servers need Node.** All three packages are thin adapters; the engine is the Node one. Each check is a round trip over a local pipe: about 0.3 ms on a laptop without AI review. Several adapters can't send a reply to the server for a refused server-to-client request (sampling, elicitation): Python's Django middleware, Java's servlet filter and Rust's two HTTP adapters all drop the request and log it. Wrap the app with `McpWatchASGI` / `McpWatchWSGI`, guard the Java SDK transport with `McpWatch.guard(provider)`, or guard the Rust SDK transport with `watch.guard_stdio()`, if your server sends those.
 - **The Java SDK wrapper covers stdio and HTTP+SSE.** Streamable HTTP is guarded with the servlet filter instead. The wrapper also leans on `McpServerSession` being a non-final class with public methods: it is a delegating subclass, so a future SDK release that adds a public method to that class would need a matching override here.
+- **The Rust SDK guard covers stdio and byte streams.** Streamable HTTP is guarded with the tower layer instead, for the same reason as Java's servlet filter. The crate keeps `rmcp` off by default: it has changed major version three times in 73 releases, and a default-on dependency would put the crate's `rmcp` beside the host's the day the next major lands.

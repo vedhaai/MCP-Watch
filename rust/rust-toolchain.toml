@@ -1,0 +1,5 @@
+# Build the package with current stable Rust. Contributors and CI get the same compiler without
+# having to remember to update one.
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]
