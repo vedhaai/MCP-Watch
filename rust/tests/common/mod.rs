@@ -141,3 +141,130 @@ pub fn rules(reply: &Value) -> Vec<String> {
 pub fn error_code(reply: &Value) -> Option<i64> {
     reply.get("error")?.get("code")?.as_i64()
 }
+
+// ---- a stub engine, for the behaviour that needs no verdict ---------------------------------
+
+use std::sync::Mutex;
+
+use mcpwatch::{BoxFuture, HttpInfo, Outcome, Verdict, Verdicts};
+
+/// A guard that answers from a script rather than from the rules.
+///
+/// Most of the HTTP adapter is framing — batches, SSE boundaries, UTF-8, content lengths — and
+/// none of it needs a real verdict. Running those against a stub means they need neither Node nor
+/// a built engine, so they stay green on a fresh checkout.
+#[derive(Default)]
+pub struct StubEngine {
+    /// Tool names to refuse with -32001.
+    pub blocked_tools: Vec<String>,
+    /// Server messages to withhold entirely.
+    pub withhold_server: bool,
+    /// Replace a server message's `result` with this.
+    pub rewrite_result: Option<Value>,
+    /// What `from_http` answers.
+    pub refuse_http: bool,
+    /// A reply the guard owes the server, returned once for a server message.
+    pub server_reply: Option<Value>,
+    /// Every bookkeeping call, in order: `rename:a>b`, `drop:s`, `event:s/id`.
+    pub notes: Mutex<Vec<String>>,
+}
+
+impl StubEngine {
+    pub fn blocking(tools: &[&str]) -> Self {
+        Self {
+            blocked_tools: tools.iter().map(|t| t.to_string()).collect(),
+            ..Default::default()
+        }
+    }
+
+    pub fn notes(&self) -> Vec<String> {
+        self.notes.lock().unwrap().clone()
+    }
+
+    fn tool_of(message: &Value) -> Option<&str> {
+        message.get("params")?.get("name")?.as_str()
+    }
+}
+
+impl Verdicts for StubEngine {
+    fn from_client<'a>(
+        &'a self,
+        _session: &'a str,
+        msg: Value,
+        _http: Option<&'a HttpInfo>,
+    ) -> BoxFuture<'a, Outcome> {
+        Box::pin(async move {
+            let blocked = Self::tool_of(&msg)
+                .is_some_and(|tool| self.blocked_tools.iter().any(|b| b == tool));
+            if blocked {
+                let id = msg.get("id").cloned().unwrap_or(Value::Null);
+                return Outcome {
+                    forward: Verdict::Drop,
+                    reply: Some(mcpwatch::error_reply(
+                        &id,
+                        mcpwatch::BLOCKED,
+                        "Blocked by MCPWatch: MW002 stubbed",
+                    )),
+                };
+            }
+            Outcome::pass(msg)
+        })
+    }
+
+    fn from_server<'a>(
+        &'a self,
+        _session: &'a str,
+        msg: Value,
+        _strict: bool,
+    ) -> BoxFuture<'a, Outcome> {
+        Box::pin(async move {
+            if self.withhold_server {
+                return Outcome {
+                    forward: Verdict::Drop,
+                    reply: self.server_reply.clone(),
+                };
+            }
+            if let Some(result) = &self.rewrite_result {
+                let mut rewritten = msg.clone();
+                if let Some(object) = rewritten.as_object_mut() {
+                    object.insert("result".into(), result.clone());
+                }
+                return Outcome {
+                    forward: Verdict::Replace(rewritten),
+                    reply: None,
+                };
+            }
+            Outcome {
+                forward: Verdict::Forward(msg),
+                reply: self.server_reply.clone(),
+            }
+        })
+    }
+
+    fn from_http<'a>(
+        &'a self,
+        _session: &'a str,
+        _http: &'a HttpInfo,
+        _method: &'a str,
+    ) -> BoxFuture<'a, bool> {
+        Box::pin(async move { self.refuse_http })
+    }
+
+    fn rename_session(&self, from: &str, to: &str) {
+        self.notes
+            .lock()
+            .unwrap()
+            .push(format!("rename:{from}>{to}"));
+    }
+
+    fn drop_session(&self, session: &str) {
+        self.notes.lock().unwrap().push(format!("drop:{session}"));
+    }
+
+    fn note_event_id(&self, session: &str, event_id: &str) {
+        self.notes
+            .lock()
+            .unwrap()
+            .push(format!("event:{session}/{event_id}"));
+    }
+}

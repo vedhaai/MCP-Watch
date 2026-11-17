@@ -27,6 +27,8 @@ mod error;
 mod options;
 mod outcome;
 
+pub mod http;
+
 #[cfg(feature = "rmcp")]
 #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
 pub mod sdk;
