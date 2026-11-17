@@ -7,6 +7,10 @@
 
 mod sse;
 
+#[cfg(feature = "tower")]
+#[cfg_attr(docsrs, doc(cfg(feature = "tower")))]
+pub mod tower;
+
 use std::sync::Arc;
 
 use serde_json::Value;
