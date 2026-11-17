@@ -1,0 +1,47 @@
+name: npm release
+
+# Publishes one package when you push a tag:
+#   engine-v0.4.0     -> @vedhaai/mcpwatch
+#   dashboard-v0.5.0  -> @vedhaai/mcpwatch-dashboard
+# Needs an NPM_TOKEN repository secret. Publish the engine first when both change.
+
+on:
+  push:
+    tags:
+      - "engine-v*"
+      - "dashboard-v*"
+
+permissions:
+  contents: read
+  id-token: write # npm provenance
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+      - name: Pick the package and check the tag matches its version
+        run: |
+          case "$GITHUB_REF_NAME" in
+            engine-v*)    echo "PKG=engine"  >> "$GITHUB_ENV" ;;
+            dashboard-v*) echo "PKG=backend" >> "$GITHUB_ENV" ;;
+          esac
+          . "$GITHUB_ENV"
+          want="${GITHUB_REF_NAME#*-v}"
+          have="$(node -p "require('./$PKG/package.json').version")"
+          if [ "$want" != "$have" ]; then
+            echo "Tag says $want but $PKG/package.json says $have" >&2
+            exit 1
+          fi
+      - run: npm run build
+      - run: npm test
+      # prepublishOnly in each package cleans, rebuilds and tests again.
+      - run: npm publish -w "$PKG" --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

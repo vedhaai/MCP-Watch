@@ -1,6 +1,6 @@
 {
   "name": "@vedhaai/mcpwatch",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Security guard for MCP servers: middleware or proxy that scans every JSON-RPC message",
   "keywords": [
     "mcp",
@@ -17,6 +17,11 @@
     "directory": "engine"
   },
   "homepage": "https://github.com/vedhaai/MCP-Watch#readme",
+  "author": "vedhaai",
+  "bugs": {
+    "url": "https://github.com/vedhaai/MCP-Watch/issues"
+  },
+  "sideEffects": false,
   "engines": {
     "node": ">=20"
   },
@@ -30,20 +35,23 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "bin": {
     "mcpwatch": "dist/cli.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "build": "tsc",
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
     "dev": "tsc --watch --preserveWatchOutput",
     "pretest": "tsc",
     "test": "node --test test/*.test.mjs",
-    "prepublishOnly": "npm test"
+    "prepublishOnly": "npm run clean && npm run build && npm test"
   },
   "license": "MIT",
   "dependencies": {
