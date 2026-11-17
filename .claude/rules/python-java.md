@@ -10,5 +10,5 @@ paths:
 - Keep message order per direction and per session (Python: promise-queue equivalent; Java: `Sequencer`).
 - `fail_open` / `failOpen` decides what happens if the engine cannot start. Keep it configurable and documented.
 - Java: no dependencies beyond SLF4J; MCP SDK, Reactor and servlet API stay `provided`. Keep the small built-in JSON codec; do not add Jackson.
-- The Python and Java HTTP adapters are ports of `engine/src/http-proxy.ts`. When the proxy's behaviour changes, update both.
+- The Python and Java HTTP adapters are ports of `engine/src/http-proxy.ts`, as the Rust one in `rust/src/http/` is. When the proxy's behaviour changes, update all three.
 - Tests: `npm run test:python` and `npm run test:java`.

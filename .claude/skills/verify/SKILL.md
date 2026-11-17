@@ -11,5 +11,6 @@ Run from the repo root, in this order, and stop at the first failure to diagnose
 2. `npm test` (engine tests, then backend tests; both compile first)
 3. Only if `python/` changed: `npm run test:python`
 4. Only if `java/` changed: `npm run test:java` (needs Java 17+ and Maven)
+5. Only if `rust/` changed: `npm run test:rust` (needs Rust 1.88+); also `cd rust && cargo clippy --all-targets --features full -- -D warnings`
 
 Report per step: passed or failed, with the failing test names and the first error. If a step was skipped, say why. Do not claim success for steps that did not run. Do not edit tests to make them pass without telling the user.

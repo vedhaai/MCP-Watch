@@ -29,6 +29,7 @@ Each part has its own folder and its own npm package (npm workspaces):
 | [frontend/](frontend) | private | The dashboard web app (React, TypeScript, MUI). Its build goes into `backend/public/`, which the backend serves and ships |
 | [python/](python) | `vedhaai-mcpwatch` (PyPI) | The Python package: the official MCP SDK, Django, Flask, FastAPI, any ASGI or WSGI app |
 | [java/](java) | `ai.vedha:mcpwatch` (Maven) | The Java package: the official MCP Java SDK, and a servlet filter for Spring Boot, Quarkus, Jetty or Tomcat |
+| [rust/](rust) | `mcpwatch` (crates.io) | The Rust package: the official Rust SDK (rmcp), a tower layer for axum, actix-web middleware, and the `mcpwatch-proxy` binary |
 
 Each package keeps its tests in its own `test/` folder.
 
@@ -58,7 +59,9 @@ Every script:
 | `npm run dev` | Engine, backend and web app together in watch mode; open http://localhost:5173 |
 | `npm run dev:web` | The dashboard web app with hot reload on :5173, using the API of a dashboard running on :9100 |
 | `npm test` | All tests (engine, then backend). One package: `npm test -w engine` or `npm test -w backend` |
+| `npm run test:python` | The Python package's tests (needs Python 3.10+ and pytest) |
 | `npm run test:java` | The Java package's tests (needs Java 17+ and Maven) |
+| `npm run test:rust` | The Rust package's tests (needs Rust 1.88+) |
 | `npm run scan` | Check the MCP servers configured on this machine. Pass options after `--`, e.g. `npm run scan -- --connect` |
 | `npm run ai` | Check the local AI reviewer (Ollama) with sample messages |
 | `npm run rules` / `npm run pins:reset` | List the rules / forget pinned tool definitions |
@@ -69,6 +72,7 @@ Every script:
    - **Node/TypeScript server:** middleware.
    - **Python server** (MCP SDK, Django, Flask, FastAPI): Python middleware.
    - **Java server** (MCP Java SDK, Spring Boot, Quarkus): Java middleware.
+   - **Rust server** (rmcp, axum, actix-web): Rust middleware.
    - **Any local server:** stdio proxy.
    - **Any remote server:** HTTP proxy.
 2. The **Setup** page shows the steps with your project key filled in. It says *Waiting…* until your server first contacts the dashboard, then turns **Connected**.
@@ -168,6 +172,22 @@ new McpWatchFilter("my-tools", options, "/mcp")  // any servlet app, and Streama
 ```
 
 As for Python, the checks run in this package's engine, which the Java package starts as a child process (`mcpwatch engine`, JSON lines over stdin/stdout), so Java servers get the same rules, AI reviewer, dashboard reporting and live settings as Node servers, and **Node 20+ must be installed** next to Java. It needs Java 17+, takes the same `MCPWATCH_*` variables, and brings no dependencies of its own beyond SLF4J. Setup, options and tests: [java/README.md](java/README.md).
+
+## Rust servers (rmcp, axum, actix-web)
+
+The [Rust package](rust) adds the same guard to a server written in Rust, with one line:
+
+```rust
+server.serve(watch.guard_stdio()).await?      // official Rust SDK (rmcp): stdio, any byte stream
+.layer(McpWatchLayer::from_watch(&watch))     // axum or any tower service, incl. Streamable HTTP
+.wrap(McpWatch::from_watch(&watch))           // actix-web
+```
+
+```toml
+mcpwatch = "0.1"
+```
+
+As for Python and Java, the checks run in this package's engine, which the Rust package starts as a child process (`mcpwatch engine`, JSON lines over stdin/stdout), so Rust servers get the same rules, AI reviewer, dashboard reporting and live settings as Node servers, and **Node 20+ must be installed** next to Rust. It needs Rust 1.88+, takes the same `MCPWATCH_*` variables, and keeps every dependency beyond `serde`, `tokio` and the `log` facade behind the feature that needs it. It also ships `mcpwatch-proxy`, a Rust build of the stdio proxy below. Setup, options and tests: [rust/README.md](rust/README.md).
 
 ## Proxy: for MCP servers you can't edit
 
@@ -312,7 +332,7 @@ Settings about the guard itself:
 
 | Setting | Default | What it does |
 |---|---|---|
-| `failOpen` | `false` | If a check throws, refuse the request with `-32001`. `true` forwards it unchecked. Notifications and responses have no id to answer, so they pass either way. (The Python and Java adapters have their own `fail_open` / `failOpen` for the case where the engine process can't run; it now defaults to `false` there too.) |
+| `failOpen` | `false` | If a check throws, refuse the request with `-32001`. `true` forwards it unchecked. Notifications and responses have no id to answer, so they pass either way. (The Python, Java and Rust adapters have their own `fail_open` / `failOpen` for the case where the engine process can't run; it now defaults to `false` there too.) |
 | `maxBodyBytes` | 10 000 000 | HTTP proxy: the largest request body it reads (413 beyond), and the largest single SSE event it buffers |
 | `upstreamTimeoutMs` | 60 000 | HTTP proxy: how long the upstream has to start answering |
 | `aiMaxConcurrent` | 8 | Most reviews with the model at once; up to 64 more wait, the rest skip the review (rules only, or MA002 when `required`) |
@@ -368,3 +388,5 @@ The backend's 3, in [backend/test](backend/test):
 The Python package has its own tests (`npm run test:python`, after installing it as shown in [python/README.md](python/README.md#tests)). They cover an SDK server over stdio and Streamable HTTP, Flask, Django, plain ASGI and WSGI apps, and the engine being unavailable.
 
 The Java package has 59, in [java/src/test](java/src/test/java/ai/vedha/mcpwatch) (`npm run test:java`, needs Java 17+ and Maven). They run against the engine built in this repository, so they check real verdicts: the JSON codec, the sidecar protocol, the HTTP guard's JSON and SSE handling, the servlet filter end to end through a real Jetty server, and the SDK transport and session wrapper.
+
+The Rust package has 94, in [rust/src](rust/src) and [rust/tests](rust/tests) (`npm run test:rust`, needs Rust 1.88+). Most answer from a stub, so they need no engine build: SSE boundary scanning, UTF-8 split across chunks, batch refusals and session naming. The rest run against the engine built in this repository, so they check real verdicts: the sidecar protocol under concurrent load, the rmcp transport guard over a byte pipe, the tower layer through a real axum server (including that an SSE stream still streams), the same cases through actix-web, and the `mcpwatch-proxy` binary against a real child server.

@@ -15,7 +15,11 @@ const rules = [
   [/\bgit\s+push\b[^\n]*\s(main|master)\b/, "direct push to main; open a PR from develop instead"],
   [/--no-verify\b|--no-gpg-sign\b/, "skipping hooks or signing is not allowed"],
   [/\bgit\s+reset\s+--hard\b/, "destructive reset; confirm with the user first"],
-  [/\bnpm\s+publish\b|\btwine\s+upload\b|\bmvn\b[^\n]*\bdeploy\b/, "publishing is a release step; confirm with the user first"],
+  // `cargo publish` matters most of the four: a crates.io version is immutable, so it can be
+  // yanked but never edited, replaced or removed. The lookahead keeps `--dry-run` usable, which
+  // is the one publishing command that belongs in a review.
+  [/\bnpm\s+publish\b|\btwine\s+upload\b|\bmvn\b[^\n]*\bdeploy\b|\bcargo\s+publish\b(?![^\n]*--dry-run\b)/, "publishing is a release step; confirm with the user first"],
+  [/\bcargo\s+(yank|owner|login)\b/, "this changes a published crate or its credentials; confirm with the user first"],
 ];
 
 for (const [re, why] of rules) {
