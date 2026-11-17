@@ -437,15 +437,24 @@ test("dashboard: project and AI keys are encrypted on disk, and the settings a g
   assert.notEqual(sig, createHmac("sha256", "mw_someone_elses_key").update(body).digest("hex"));
 });
 
-test("dashboard: a .NET project can be created, and an unknown kind is still refused", async (t) => {
+// Every kind the dashboard offers must survive the generated request validator, which carries its own
+// copy of ProjectKind. A package added to the type but not rebuilt into the validator would 4xx here.
+const PROJECT_KINDS = [
+  "middleware", "middleware-python", "middleware-java", "middleware-rust", "middleware-dotnet",
+  "proxy-stdio", "proxy-http",
+];
+
+test("dashboard: every project kind can be created, and an unknown kind is still refused", async (t) => {
   startDashboard(t);
   await ready();
-  const { cookie } = await api("/api/auth/register", { method: "POST", body: { username: "dotnet-owner", password: "owner-pass-1" } });
+  const { cookie } = await api("/api/auth/register", { method: "POST", body: { username: "kinds-owner", password: "owner-pass-1" } });
 
-  const created = await api("/api/projects", { cookie, method: "POST", body: { name: "Dotnet tools", kind: "middleware-dotnet" } });
-  assert.equal(created.status, 201);
-  assert.equal(created.body.kind, "middleware-dotnet");
-  assert.match(created.body.key, /^mw_/);
+  for (const kind of PROJECT_KINDS) {
+    const created = await api("/api/projects", { cookie, method: "POST", body: { name: `Tools ${kind}`, kind } });
+    assert.equal(created.status, 201, `${kind} should be accepted, got ${created.status}`);
+    assert.equal(created.body.kind, kind);
+    assert.match(created.body.key, /^mw_/);
+  }
 
   const bad = await api("/api/projects", { cookie, method: "POST", body: { name: "Nope", kind: "middleware-cobol" } });
   assert.ok(bad.status >= 400 && bad.status < 500, `expected a 4xx, got ${bad.status}`);
