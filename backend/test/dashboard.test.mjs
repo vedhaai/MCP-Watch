@@ -436,3 +436,17 @@ test("dashboard: project and AI keys are encrypted on disk, and the settings a g
   assert.equal(sig, createHmac("sha256", p.key).update(body).digest("hex"));
   assert.notEqual(sig, createHmac("sha256", "mw_someone_elses_key").update(body).digest("hex"));
 });
+
+test("dashboard: a .NET project can be created, and an unknown kind is still refused", async (t) => {
+  startDashboard(t);
+  await ready();
+  const { cookie } = await api("/api/auth/register", { method: "POST", body: { username: "dotnet-owner", password: "owner-pass-1" } });
+
+  const created = await api("/api/projects", { cookie, method: "POST", body: { name: "Dotnet tools", kind: "middleware-dotnet" } });
+  assert.equal(created.status, 201);
+  assert.equal(created.body.kind, "middleware-dotnet");
+  assert.match(created.body.key, /^mw_/);
+
+  const bad = await api("/api/projects", { cookie, method: "POST", body: { name: "Nope", kind: "middleware-cobol" } });
+  assert.ok(bad.status >= 400 && bad.status < 500, `expected a 4xx, got ${bad.status}`);
+});

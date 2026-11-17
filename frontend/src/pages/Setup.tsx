@@ -89,6 +89,29 @@ FilterRegistrationBean<McpWatchFilter> mcpwatch() {
       start,
     ];
   }
+  if (p.kind === "middleware-dotnet") {
+    return [
+      ["Add MCPWatch to your project", <>
+        <CopyBlock text="dotnet add package Vedhaai.MCPWatch" />
+        <P>Works on .NET Framework 4.6.1+ and .NET 6 or later (C# or VB.NET). In a classic .NET Framework project, use <M>Install-Package Vedhaai.MCPWatch</M> in the Package Manager Console. The checks run in the MCPWatch engine, which needs Node 20+. The package starts it for you (the first start downloads it with npx). To skip that download, install it once:</P>
+        <CopyBlock text="npm install -g @vedhaai/mcpwatch" />
+      </>],
+      ["Check each message your server reads and writes", <CopyBlock text={`using Vedhaai.MCPWatch;
+
+var guard = McpWatchGuard.CreateIfEnabled("my-tools");   // null when MCPWATCH_ENABLED=0
+
+// client -> server: every line your server reads
+Outcome o = await guard.FromClientLineAsync(session, line);
+if (o.ReplyJson != null)   WriteToClient(o.ReplyJson);   // refused: the tool never runs
+if (o.ForwardJson != null) HandleInYourServer(o.ForwardJson);
+
+// server -> client: every message your server sends back
+Outcome r = await guard.FromServerLineAsync(session, responseJson);
+if (r.ForwardJson != null) WriteToClient(r.ForwardJson);`} />],
+      ["Give it your project key", <><P>Set these where your server runs (PowerShell shown). Or pass them in code: <M>new McpWatchOptions {"{ ProjectKey = …, Server = … }"}</M>.</P><CopyBlock text={env} /></>],
+      start,
+    ];
+  }
   if (p.kind === "proxy-stdio") {
     const cfg = JSON.stringify({ "my-server": { command: "npx", args: ["-y", ENGINE, "--project-key", p.key, "--server", server, "--", "npx", "-y", "@modelcontextprotocol/server-filesystem", "C:/mcp-test"] } }, null, 2);
     return [
