@@ -30,6 +30,7 @@ Each part has its own folder and its own npm package (npm workspaces):
 | [python/](python) | `vedhaai-mcpwatch` (PyPI) | The Python package: the official MCP SDK, Django, Flask, FastAPI, any ASGI or WSGI app |
 | [java/](java) | `ai.vedha:mcpwatch` (Maven) | The Java package: the official MCP Java SDK, and a servlet filter for Spring Boot, Quarkus, Jetty or Tomcat |
 | [rust/](rust) | `mcpwatch` (crates.io) | The Rust package: the official Rust SDK (rmcp), a tower layer for axum, actix-web middleware, and the `mcpwatch-proxy` binary |
+| [dotnet/](dotnet) | `Vedhaai.MCPWatch` (NuGet) | The .NET package for C# and VB.NET servers (.NET Framework 4.6.1+ and modern .NET): a guard you put where your server reads and writes messages |
 
 Each package keeps its tests in its own `test/` folder.
 
@@ -62,6 +63,7 @@ Every script:
 | `npm run test:python` | The Python package's tests (needs Python 3.10+ and pytest) |
 | `npm run test:java` | The Java package's tests (needs Java 17+ and Maven) |
 | `npm run test:rust` | The Rust package's tests (needs Rust 1.88+) |
+| `npm run test:dotnet` | The .NET package's tests (needs the .NET SDK; the .NET Framework 4.8 run needs Windows) |
 | `npm run scan` | Check the MCP servers configured on this machine. Pass options after `--`, e.g. `npm run scan -- --connect` |
 | `npm run ai` | Score the AI reviewer's model on 50 labelled messages (attacks caught, false alarms) |
 | `npm run rules` / `npm run pins:reset` | List the rules / forget pinned tool definitions |
@@ -73,6 +75,7 @@ Every script:
    - **Python server** (MCP SDK, Django, Flask, FastAPI): Python middleware.
    - **Java server** (MCP Java SDK, Spring Boot, Quarkus): Java middleware.
    - **Rust server** (rmcp, axum, actix-web): Rust middleware.
+   - **.NET server** (C#, including .NET Framework): the [.NET package](dotnet).
    - **Any local server:** stdio proxy.
    - **Any remote server:** HTTP proxy.
 2. The **Setup** page shows the steps with your project key filled in. It says *Waiting…* until your server first contacts the dashboard, then turns **Connected**.

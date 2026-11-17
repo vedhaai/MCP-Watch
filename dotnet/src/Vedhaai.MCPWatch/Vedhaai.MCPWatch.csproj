@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- netstandard2.0 is what .NET Framework 4.6.1+ (4.7.2+ recommended) and .NET 6/8 all consume. -->
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>Vedhaai.MCPWatch</RootNamespace>
+    <AssemblyName>Vedhaai.MCPWatch</AssemblyName>
+
+    <PackageId>Vedhaai.MCPWatch</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>vedhaai</Authors>
+    <Description>MCPWatch security guard for MCP servers written in C# or VB.NET, on .NET Framework 4.6.1+ and modern .NET. Checks every JSON-RPC message in both directions with the MCPWatch engine.</Description>
+    <PackageTags>mcp;model-context-protocol;security;guard;ai-agents;csharp;dotnet;dotnet-framework;netstandard</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryUrl>https://github.com/vedhaai/MCP-Watch</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Vedhaai.MCPWatch.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+</Project>

@@ -23,6 +23,7 @@
     "test:python": "cd python && python -m pytest",
     "test:java": "cd java && mvn -B test",
     "test:rust": "cd rust && cargo test --features full",
+    "test:dotnet": "cd dotnet && dotnet test tests/Vedhaai.MCPWatch.Tests",
     "scan": "node engine/dist/cli.js scan",
     "rules": "node engine/dist/cli.js rules",
     "ai": "node engine/dist/cli.js ai",

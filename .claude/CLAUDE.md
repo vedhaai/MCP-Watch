@@ -26,6 +26,7 @@ Repo: https://github.com/vedhaai/MCP-Watch · License: MIT · Node >= 20.
 | `python/` | `vedhaai-mcpwatch` (PyPI) | Python adapter; spawns `mcpwatch engine` as a child process. |
 | `java/` | `ai.vedha:mcpwatch` (Maven) | Java adapter (MCP Java SDK, servlet filter); also spawns the engine. |
 | `rust/` | `mcpwatch` (crates.io) | Rust adapter (rmcp transport, tower/axum layer, actix-web, `mcpwatch-proxy`); also spawns the engine. |
+| `dotnet/` | `Vedhaai.MCPWatch` (NuGet) | .NET adapter (`netstandard2.0`: .NET Framework 4.6.1+ and modern .NET): `Engine` + ordered `McpWatchGuard`, no dependencies; also spawns the engine. No SDK/ASP.NET wrapper yet. |
 | `docs/` | | `architecture.svg` |
 
 Key engine files: `engine.ts` (`fromClient` / `fromServer`), `rules.ts`, `state.ts`, `ai.ts`, `policy.ts`, `pins.ts`, `scan.ts`, `middleware.ts`, `stdio-proxy.ts`, `http-proxy.ts`, `engine-server.ts`, `headerwatch.ts`/`events.ts` (reporting).
@@ -41,6 +42,7 @@ npm run dev            # all three in watch mode; open http://localhost:5173
 npm test               # engine + backend tests
 npm run test:python    # cd python && pytest
 npm run test:java      # cd java && mvn -B test (Java 17+)
+npm run test:dotnet    # cd dotnet && dotnet test (net48 + net6.0; net48 needs Windows)
 npm run scan | rules | ai | pins:reset
 ```
 
@@ -49,11 +51,11 @@ One package: `npm test -w engine`, `npm run build -w backend`, etc. Tests are `*
 ## Conventions and gotchas
 
 - Engine never depends on the dashboard. A guard must keep working if the dashboard is down (events fall back to `~/.mcpwatch/events.jsonl`).
-- Python and Java do not re-implement rules; they only move messages to the Node engine. Change rule behaviour in `engine/`, not in the adapters.
+- Python, Java and .NET do not re-implement rules; they only move messages to the Node engine. Change rule behaviour in `engine/`, not in the adapters.
 - `Engine.fromClient`/`fromServer` are async (AI reviewer). Wrappers keep a per-direction promise queue so messages never overtake each other; preserve this.
 - Verdicts: `-32001` blocked, `-32002` throttled. Modes: `observe`, `protect`, `enforce`. User block/trust lists override mode.
-- Fail-open: Python/Java adapters pass messages unchecked if the engine can't start (configurable); the Node engine's `failOpen` defaults to refusing.
-- Generated or ignored, never commit: `backend/src/generated/` (tsoa output), `backend/public/` (frontend build), `dist/`, `secret.key` (dashboard encryption key), `.env*`, Java `target/`, Python venvs and caches.
+- Fail-open: Python/Java/.NET adapters pass messages unchecked if the engine can't start (configurable); the Node engine's `failOpen` defaults to refusing.
+- Generated or ignored, never commit: `backend/src/generated/` (tsoa output), `backend/public/` (frontend build), `dist/`, `secret.key` (dashboard encryption key), `.env*`, Java `target/`, .NET `bin/` and `obj/`, Python venvs and caches.
 - Fake secrets in tests/docs must not look like real keys (they trigger secret scanners); see commit 3ee2a88.
 - Dashboard binds to 127.0.0.1; secrets are stored encrypted (`secret-box.ts`); outbound URLs go through `safe-url.ts`. Keep these hardening properties when changing the backend.
 - Package versions are managed per package and must stay above published versions (see sync-main-versions merge).

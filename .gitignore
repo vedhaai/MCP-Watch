@@ -9,6 +9,10 @@ secret.key
 # Java package
 target/
 
+# .NET package
+dotnet/**/bin/
+dotnet/**/obj/
+
 # Python package
 .venv*/
 __pycache__/
