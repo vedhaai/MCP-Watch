@@ -11,6 +11,10 @@ mod sse;
 #[cfg_attr(docsrs, doc(cfg(feature = "tower")))]
 pub mod tower;
 
+#[cfg(feature = "actix")]
+#[cfg_attr(docsrs, doc(cfg(feature = "actix")))]
+pub mod actix;
+
 use std::sync::Arc;
 
 use serde_json::Value;
