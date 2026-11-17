@@ -3,8 +3,11 @@
 //! | You have | Use |
 //! |---|---|
 //! | A server built with the official Rust SDK (`rmcp`) | `McpWatch::guard_stdio` around its transport |
-//! | axum, or anything that speaks tower | `mcpwatch::tower::McpWatchLayer` |
-//! | actix-web | `mcpwatch::actix::McpWatch` |
+// These are written out rather than linked: an intra-doc link to a feature-gated item breaks
+// `cargo doc` for anyone not enabling that feature. `tests/readme_api.rs` names each path instead,
+// so a rename still cannot leave this table wrong.
+//! | axum, or anything that speaks tower | `mcpwatch::http::tower::McpWatchLayer` |
+//! | actix-web | `mcpwatch::http::actix::McpWatch` |
 //! | A server you cannot change | the `mcpwatch-proxy` binary |
 //!
 //! ```no_run

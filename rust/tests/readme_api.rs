@@ -44,3 +44,21 @@ fn the_modes_the_readme_lists_all_parse() {
         assert_eq!(mode.as_str(), name);
     }
 }
+
+/// The crate-level doc table names a path for each way in. 0.1.0 shipped with two of them wrong
+/// (`mcpwatch::tower::…` instead of `mcpwatch::http::tower::…`), and nothing caught it, because
+/// the test above only covered builder methods. Naming the paths here means a module move cannot
+/// leave the table lying again.
+#[test]
+fn the_paths_the_crate_docs_name_are_real() {
+    #[cfg(feature = "tower")]
+    let _: fn(std::sync::Arc<dyn mcpwatch::Verdicts>) -> mcpwatch::http::tower::McpWatchLayer =
+        mcpwatch::http::tower::McpWatchLayer::new;
+
+    #[cfg(feature = "actix")]
+    let _: fn(std::sync::Arc<dyn mcpwatch::Verdicts>) -> mcpwatch::http::actix::McpWatch =
+        mcpwatch::http::actix::McpWatch::new;
+
+    #[cfg(feature = "rmcp")]
+    let _: fn(&mcpwatch::McpWatch) -> mcpwatch::GuardedTransport = mcpwatch::McpWatch::guard_stdio;
+}

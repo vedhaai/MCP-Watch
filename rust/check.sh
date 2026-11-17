@@ -27,7 +27,10 @@ step "tests (all features)"
 cargo test --features full
 
 step "docs build without warnings"
+# Both feature sets: an intra-doc link to a feature-gated item passes with --features full and
+# then breaks `cargo doc` for everyone who did not enable that feature.
 RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --features full
+RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
 
 step "each feature on its own"
 for feature in "" rmcp tower actix proxy; do
