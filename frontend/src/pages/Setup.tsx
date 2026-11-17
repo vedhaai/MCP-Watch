@@ -89,6 +89,33 @@ FilterRegistrationBean<McpWatchFilter> mcpwatch() {
       start,
     ];
   }
+  if (p.kind === "middleware-rust") {
+    return [
+      ["Add MCPWatch to your server's build", <>
+        <CopyBlock text={`[dependencies]
+# The tower layer (axum) is the default feature. For the official Rust SDK add
+# features = ["rmcp"]; for actix-web, features = ["actix"].
+mcpwatch = "0.1"`} />
+        <P>Needs Rust 1.88+. The checks run in the MCPWatch engine, which needs Node 20+. The crate starts it for you (the first start resolves it with npx). To skip that, install it once:</P>
+        <CopyBlock text="npm install -g @vedhaai/mcpwatch" />
+      </>],
+      ["Add one line to your server", <CopyBlock text={`// Official Rust SDK (rmcp): stdio, or any byte stream with guard_io(read, write)
+use mcpwatch::{McpWatch, McpWatchOptions};
+use rmcp::ServiceExt;
+
+let watch = McpWatch::start("my-tools", McpWatchOptions::new()).await;
+let running = server.serve(watch.guard_stdio()).await?;   // ← the only line changed
+
+// axum, and anything else that speaks tower — this is the one to use for Streamable HTTP
+use mcpwatch::http::tower::McpWatchLayer;
+
+let guarded = tower::ServiceBuilder::new()
+    .layer(McpWatchLayer::from_watch(&watch))   // ← innermost layer, inside any compression
+    .service(mcp_service);`} />],
+      ["Give it your project key", <><P>Set these where your server runs (PowerShell shown). Or pass them in code: <M>McpWatchOptions::builder().project_key(…).server(…).build()</M>.</P><CopyBlock text={env} /></>],
+      start,
+    ];
+  }
   if (p.kind === "middleware-dotnet") {
     return [
       ["Add MCPWatch to your project", <>
