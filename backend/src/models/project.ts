@@ -85,11 +85,18 @@ export interface ProjectAlerts {
   webhookUrl: string;
   // Signs each webhook body (HMAC-SHA256) so the receiver can tell it came from this dashboard.
   webhookSecret: string;
+  // Outlook is its own channel, separate from email above. It always sends through smtp.office365.com, so
+  // the settings are just the mailbox (its address is also the from address), its password (a secret:
+  // stored encrypted, never sent back to the browser) and who to send to.
+  outlookUser: string;
+  outlookPass: string;
+  outlookTo: string[];
 }
 
 export const ALERTS_OFF: ProjectAlerts = {
   enabled: false, minSeverity: "high", onBlock: true, cooldownSeconds: 300, emails: [],
   smtpHost: "", smtpPort: 587, smtpSecure: false, smtpUser: "", smtpPass: "", smtpFrom: "", slackUrl: "", webhookUrl: "", webhookSecret: "",
+  outlookUser: "", outlookPass: "", outlookTo: [],
 };
 
 export const LOCAL_AI ={ url: "http://127.0.0.1:11434/v1", model: "qwen2.5:7b" };

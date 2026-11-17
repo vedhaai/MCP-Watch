@@ -129,3 +129,31 @@ test("alerts: addresses the dashboard shouldn't call, and bad settings, are refu
   assert.equal((await patch({})).status, 400, "enabled with nowhere to send");
   assert.equal((await patch({ cooldownSeconds: -1, webhookUrl: "https://example.com/h" })).status, 400);
 });
+
+// Outlook is its own channel, apart from email. These only save and read settings: a test alert would
+// connect to Microsoft, which a test must not do.
+test("alerts: Outlook is a separate channel; its password stays private and bad settings are refused", async (t) => {
+  const { api, p } = await start(t);
+  const patch = (alerts) => api(`/api/projects/${p.id}`, "PATCH", { alerts: settings(alerts) });
+  const outlook = { outlookUser: "Alerts@Example.com", outlookPass: "outlook-pass-xyz", outlookTo: ["Ops@example.com", "ops@example.com", "sec@example.com"] };
+
+  assert.equal((await patch({ outlookUser: "nope", outlookPass: "x", outlookTo: ["a@example.com"] })).status, 400, "from must be an address");
+  assert.equal((await patch({ outlookUser: "a@example.com", outlookTo: ["b@example.com"] })).status, 400, "a mailbox needs its password");
+  assert.equal((await patch({ outlookUser: "a@example.com", outlookPass: "x" })).status, 400, "a mailbox needs recipients");
+  assert.equal((await patch({ outlookTo: ["b@example.com"] })).status, 400, "recipients need a mailbox");
+  assert.equal((await patch({ ...outlook, outlookTo: ["not-an-email"] })).status, 400, "recipients must be addresses");
+
+  const saved = await patch(outlook);
+  assert.equal(saved.status, 200, "Outlook alone is enough to turn alerts on");
+  for (const shown of [saved.body, (await api(`/api/projects/${p.id}`)).body]) {
+    assert.deepEqual([shown.alerts.outlookUser, shown.alerts.outlookTo, shown.alerts.outlookPassSet], ["alerts@example.com", ["ops@example.com", "sec@example.com"], true]);
+    assert.equal(shown.alerts.smtpHost, "", "email is not touched");
+    assert.doesNotMatch(JSON.stringify(shown), /outlook-pass-xyz/);
+  }
+
+  // An empty password keeps the saved one; removing Outlook clears all three and leaves alerts without a channel.
+  assert.equal((await patch({ outlookUser: "alerts@example.com", outlookPass: "" })).body.alerts.outlookPassSet, true);
+  assert.equal((await patch({ clearOutlook: true, ...outlook })).status, 400, "alerts on with no channel left");
+  const off = await api(`/api/projects/${p.id}`, "PATCH", { alerts: { ...settings({ clearOutlook: true, ...outlook }), enabled: false } });
+  assert.deepEqual([off.body.alerts.outlookUser, off.body.alerts.outlookTo, off.body.alerts.outlookPassSet], ["", [], false]);
+});

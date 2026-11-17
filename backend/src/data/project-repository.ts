@@ -4,7 +4,7 @@ import { readJson, writeJson } from "./json-files.js";
 import { SecretBox } from "./secret-box.js";
 
 const PROJECT_DEFAULTS: Partial<Project> = { allowedOrigins: [], requireAuth: false, expectedAudience: "", ai: AI_OFF, alerts: ALERTS_OFF };
-const ALERT_SECRETS = ["slackUrl", "webhookUrl", "webhookSecret", "smtpPass"] as const;
+const ALERT_SECRETS = ["slackUrl", "webhookUrl", "webhookSecret", "smtpPass", "outlookPass"] as const;
 
 // Secrets are encrypted on disk and plain in memory.
 const mapAlertSecrets = (a: ProjectAlerts, fn: (s: string) => string): ProjectAlerts => {

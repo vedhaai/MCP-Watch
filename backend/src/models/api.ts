@@ -54,10 +54,16 @@ export interface AlertSettingsInput {
   webhookUrl?: string;
   clearWebhook?: boolean;
   webhookSecret?: string;
+  // Outlook channel (sends through smtp.office365.com). An empty `outlookPass` keeps the saved one;
+  // `clearOutlook` removes the mailbox and its recipients.
+  outlookUser?: string;
+  outlookPass?: string;
+  outlookTo?: string[];
+  clearOutlook?: boolean;
 }
 
 export interface AlertTestResult {
-  results: { channel: "email" | "slack" | "webhook"; ok: boolean; error?: string }[];
+  results: { channel: "email" | "outlook" | "slack" | "webhook"; ok: boolean; error?: string }[];
 }
 
 export interface ProjectPatch {
@@ -78,8 +84,8 @@ export interface ProjectPatch {
 // A project as the browser sees it: the AI key and the alert URLs only as hints that one is saved.
 export interface ProjectView extends Omit<Project, "ai" | "alerts"> {
   ai: Omit<ProjectAi, "apiKey"> & { keySet: boolean; keyHint: string };
-  alerts: Omit<ProjectAlerts, "slackUrl" | "webhookUrl" | "webhookSecret" | "smtpPass"> & {
-    slackSet: boolean; webhookSet: boolean; webhookSecretSet: boolean; smtpPassSet: boolean;
+  alerts: Omit<ProjectAlerts, "slackUrl" | "webhookUrl" | "webhookSecret" | "smtpPass" | "outlookPass"> & {
+    slackSet: boolean; webhookSet: boolean; webhookSecretSet: boolean; smtpPassSet: boolean; outlookPassSet: boolean;
     // Host only (hooks.slack.com), never the path that holds the token.
     slackHost: string; webhookHost: string;
   };

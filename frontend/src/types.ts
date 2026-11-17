@@ -57,6 +57,7 @@ export interface Project {
     enabled: boolean; minSeverity: Severity; onBlock: boolean; cooldownSeconds: number; emails: string[];
     slackSet: boolean; slackHost: string; webhookSet: boolean; webhookHost: string; webhookSecretSet: boolean;
     smtpHost: string; smtpPort: number; smtpSecure: boolean; smtpUser: string; smtpFrom: string; smtpPassSet: boolean;
+    outlookUser: string; outlookTo: string[]; outlookPassSet: boolean;
   };
   version: number;
   createdAt: string;

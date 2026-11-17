@@ -56,27 +56,29 @@ export function SettingsTab({ project: p, onChange }: { project: Project; onChan
   const [cooldown, setCooldown] = useState(String(Math.round(p.alerts.cooldownSeconds / 60)));
   const [emails, setEmails] = useState(p.alerts.emails.join(", "));
   // URLs and the secret are never sent to the browser: empty means "keep the saved one".
-  const [hooks, setHooks] = useState({ slackUrl: "", webhookUrl: "", webhookSecret: "", smtpPass: "" });
+  const [hooks, setHooks] = useState({ slackUrl: "", webhookUrl: "", webhookSecret: "", smtpPass: "", outlookPass: "" });
+  const [outlook, setOutlook] = useState({ outlookUser: p.alerts.outlookUser, outlookTo: p.alerts.outlookTo.join(", ") });
   const [smtp, setSmtp] = useState({ smtpHost: p.alerts.smtpHost, smtpPort: String(p.alerts.smtpPort), smtpSecure: p.alerts.smtpSecure, smtpUser: p.alerts.smtpUser, smtpFrom: p.alerts.smtpFrom });
   const [alertResult, setAlertResult] = useState("");
-  const noHooks = { slackUrl: "", webhookUrl: "", webhookSecret: "", smtpPass: "" };
+  const noHooks = { slackUrl: "", webhookUrl: "", webhookSecret: "", smtpPass: "", outlookPass: "" };
 
   const alertsForm = () => ({
     enabled: alertsOn, minSeverity, onBlock, cooldownSeconds: Math.max(0, Number(cooldown) || 0) * 60, emails: list(emails), ...hooks,
     ...smtp, smtpPort: Number(smtp.smtpPort) || 587,
+    outlookUser: outlook.outlookUser, outlookTo: list(outlook.outlookTo),
   });
 
   const testAlerts = async () => {
     setAlertResult("Sending…");
     try {
       const r = await api<{ results: { channel: string; ok: boolean; error?: string }[] }>(`/api/projects/${p.id}/alerts-test`, { method: "POST", body: alertsForm() });
-      setAlertResult(r.results.length ? r.results.map((x) => `${x.channel}: ${x.ok ? "sent" : `failed (${x.error})`}`).join(" · ") : "Nothing to send to yet: add an email, Slack or webhook URL.");
+      setAlertResult(r.results.length ? r.results.map((x) => `${x.channel}: ${x.ok ? "sent" : `failed (${x.error})`}`).join(" · ") : "Nothing to send to yet: add an email, Outlook, Slack or webhook URL.");
     } catch (e) {
       setAlertResult((e as Error).message);
     }
   };
 
-  const clearChannel = async (body: { clearSlack?: boolean; clearWebhook?: boolean; clearSmtp?: boolean }) => {
+  const clearChannel = async (body: { clearSlack?: boolean; clearWebhook?: boolean; clearSmtp?: boolean; clearOutlook?: boolean }) => {
     try {
       // Removing email also drops its recipients, which can't be saved without a server.
       const emailGone = body.clearSmtp ? { emails: [] as string[] } : {};
@@ -86,6 +88,7 @@ export function SettingsTab({ project: p, onChange }: { project: Project; onChan
         setEmails("");
         setSmtp({ smtpHost: "", smtpPort: "587", smtpSecure: false, smtpUser: "", smtpFrom: "" });
       }
+      if (body.clearOutlook) setOutlook({ outlookUser: "", outlookTo: "" });
     } catch (e) {
       setAlertResult((e as Error).message);
     }
@@ -247,6 +250,21 @@ export function SettingsTab({ project: p, onChange }: { project: Project; onChan
               <TextField fullWidth sx={{ mt: 1.5 }} label="Send to (comma separated)" placeholder="security@example.com" value={emails} onChange={(e) => setEmails(e.target.value)} />
               <Note>The password is stored encrypted and never shown again. The mail server has to be reachable on the internet.</Note>
               {p.alerts.smtpHost && <Button size="small" color="inherit" sx={{ mt: 0.5 }} onClick={() => clearChannel({ clearSmtp: true })}>Remove email</Button>}
+
+              <Divider sx={{ my: 2.5 }} />
+              <Typography sx={{ fontWeight: 600, fontSize: 14 }}>Outlook</Typography>
+              <Note>Sends alerts from an Outlook or Microsoft 365 mailbox through smtp.office365.com. It is separate from Email above. Fill in all three fields, or leave them empty to skip Outlook.</Note>
+              <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 1.5, mt: 1.5 }}>
+                <TextField label="Outlook address" placeholder="alerts@yourcompany.com" autoComplete="off" value={outlook.outlookUser}
+                  onChange={(e) => setOutlook({ ...outlook, outlookUser: e.target.value })} />
+                <TextField label="Password" type="password" autoComplete="off" value={hooks.outlookPass}
+                  placeholder={p.alerts.outlookPassSet ? "Saved. Leave empty to keep it" : ""} slotProps={{ inputLabel: { shrink: true } }}
+                  onChange={(e) => setHooks({ ...hooks, outlookPass: e.target.value })} />
+              </Box>
+              <TextField fullWidth sx={{ mt: 1.5 }} label="Send to (comma separated)" placeholder="security@yourcompany.com" value={outlook.outlookTo}
+                onChange={(e) => setOutlook({ ...outlook, outlookTo: e.target.value })} />
+              <Note>The password is stored encrypted and never shown again. Microsoft may require an app password, or an admin to allow SMTP AUTH for the mailbox.</Note>
+              {p.alerts.outlookUser && <Button size="small" color="inherit" sx={{ mt: 0.5 }} onClick={() => clearChannel({ clearOutlook: true })}>Remove Outlook</Button>}
 
               <Divider sx={{ my: 2.5 }} />
               <Typography sx={{ fontWeight: 600, fontSize: 14 }}>Slack</Typography>

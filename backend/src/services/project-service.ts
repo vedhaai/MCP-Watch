@@ -14,11 +14,11 @@ export const eventLimit = (limit?: number) => Math.min(Math.max(1, Math.floor(li
 
 export function forBrowser(p: Project): ProjectView {
   const { apiKey, ...ai } = p.ai;
-  const { slackUrl, webhookUrl, webhookSecret, smtpPass, ...alerts } = p.alerts;
+  const { slackUrl, webhookUrl, webhookSecret, smtpPass, outlookPass, ...alerts } = p.alerts;
   return {
     ...p, ai: { ...ai, keySet: !!apiKey, keyHint: apiKey ? `…${apiKey.slice(-4)}` : "" },
     alerts: {
-      ...alerts, slackSet: !!slackUrl, webhookSet: !!webhookUrl, webhookSecretSet: !!webhookSecret, smtpPassSet: !!smtpPass,
+      ...alerts, slackSet: !!slackUrl, webhookSet: !!webhookUrl, webhookSecretSet: !!webhookSecret, smtpPassSet: !!smtpPass, outlookPassSet: !!outlookPass,
       slackHost: alertHost(slackUrl), webhookHost: alertHost(webhookUrl),
     },
   };

@@ -37,6 +37,10 @@ const worst = (e: McpEvent): AlertSeverity | null =>
 
 // Email is sent only when the project has a mail server and a from address, and someone to send to.
 const smtpReady = (a: ProjectAlerts) => !!a.smtpHost && !!a.smtpFrom && a.emails.length > 0;
+// Outlook is sent only when a mailbox, its password and someone to send to are set. The server is fixed
+// (not user-supplied), so there is no host or port to check and nothing to point at the internal network.
+const OUTLOOK_HOST = "smtp.office365.com";
+const outlookReady = (a: ProjectAlerts) => !!a.outlookUser && !!a.outlookPass && a.outlookTo.length > 0;
 // Ports for mail only, so the SMTP box can't be used to probe other services on a host.
 const SMTP_PORTS = new Set([25, 465, 587, 2525]);
 const HOSTNAME = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/i;
@@ -60,6 +64,7 @@ export class AlertService {
       enabled: input.enabled === true, minSeverity: input.minSeverity, onBlock: input.onBlock === true,
       cooldownSeconds: Math.floor(cooldown), emails, slackUrl: current.slackUrl, webhookUrl: current.webhookUrl, webhookSecret: current.webhookSecret,
       smtpHost: current.smtpHost, smtpPort: current.smtpPort, smtpSecure: current.smtpSecure, smtpUser: current.smtpUser, smtpPass: current.smtpPass, smtpFrom: current.smtpFrom,
+      outlookUser: current.outlookUser, outlookPass: current.outlookPass, outlookTo: current.outlookTo,
     };
     if (input.smtpHost !== undefined) out.smtpHost = input.smtpHost.trim().toLowerCase().slice(0, 253);
     if (input.smtpPort !== undefined) out.smtpPort = Number(input.smtpPort);
@@ -81,12 +86,29 @@ export class AlertService {
     if (input.slackUrl?.trim()) out.slackUrl = input.slackUrl.trim().slice(0, 500);
     if (input.webhookUrl?.trim()) out.webhookUrl = input.webhookUrl.trim().slice(0, 500);
     if (input.webhookSecret?.trim()) out.webhookSecret = input.webhookSecret.trim().slice(0, 200);
+    // Outlook: its own mailbox and recipients, checked the same way as email but with a fixed server.
+    if (input.outlookUser !== undefined) out.outlookUser = input.outlookUser.trim().toLowerCase().slice(0, 254);
+    if (input.outlookPass?.trim()) out.outlookPass = input.outlookPass.slice(0, 500);
+    if (input.outlookTo !== undefined) out.outlookTo = this.addresses(input.outlookTo);
+    if (input.clearOutlook === true) Object.assign(out, { outlookUser: "", outlookPass: "", outlookTo: [] });
+    if (out.outlookUser && !EMAIL.test(out.outlookUser)) throw new HttpError(400, "Enter the Outlook address alerts are sent from");
+    if (out.outlookUser && !out.outlookPass) throw new HttpError(400, "Enter the password for the Outlook address");
+    if (out.outlookTo.length && !out.outlookUser) throw new HttpError(400, "Add an Outlook address to send from, or remove the Outlook recipients");
+    if (out.outlookUser && !out.outlookTo.length) throw new HttpError(400, "Add at least one Outlook recipient, or remove the Outlook address");
     if (input.clearSlack === true) out.slackUrl = "";
     if (input.clearWebhook === true) { out.webhookUrl = ""; out.webhookSecret = ""; }
 
     if (out.slackUrl) await this.assertSlack(out.slackUrl);
     if (out.webhookUrl) await assertReachable(out.webhookUrl, ALLOW_PRIVATE ? "private" : "public", "Webhook URL");
-    if (out.enabled && !out.emails.length && !out.slackUrl && !out.webhookUrl) throw new HttpError(400, "Add an email address, a Slack URL or a webhook URL, or turn alerts off");
+    if (out.enabled && !out.emails.length && !outlookReady(out) && !out.slackUrl && !out.webhookUrl) throw new HttpError(400, "Add an email address, an Outlook mailbox, a Slack URL or a webhook URL, or turn alerts off");
+    return out;
+  }
+
+  // Recipient lists: lower-cased, de-duplicated, each checked as an address.
+  private addresses(list: string[]): string[] {
+    const out = [...new Set(list.map((e) => e.trim().toLowerCase()).filter(Boolean))];
+    if (out.length > MAX_EMAILS) throw new HttpError(400, `At most ${MAX_EMAILS} email addresses`);
+    for (const e of out) if (e.length > 254 || !EMAIL.test(e)) throw new HttpError(400, `"${e.slice(0, 60)}" is not an email address`);
     return out;
   }
 
@@ -152,6 +174,7 @@ export class AlertService {
   private async deliver(a: ProjectAlerts, payload: AlertPayload): Promise<AlertTestResult["results"]> {
     const jobs: [Channel, () => Promise<void>][] = [];
     if (smtpReady(a)) jobs.push(["email", () => this.email(a, payload)]);
+    if (outlookReady(a)) jobs.push(["outlook", () => this.outlook(a, payload)]);
     if (a.slackUrl) jobs.push(["slack", () => this.slack(a.slackUrl, payload)]);
     if (a.webhookUrl) jobs.push(["webhook", () => this.webhook(a.webhookUrl, a.webhookSecret, payload)]);
     return Promise.all(jobs.map(async ([channel, send]) => {
@@ -189,6 +212,24 @@ export class AlertService {
       headers["X-MCPWatch-Signature"] = "sha256=" + createHmac("sha256", secret).update(`${ts}.${body}`).digest("hex");
     }
     await this.post(url, body, headers, ALLOW_PRIVATE ? "private" : "public");
+  }
+
+  // Sends through Outlook (Microsoft 365) over STARTTLS on port 587; the password is never sent in the clear.
+  private async outlook(a: ProjectAlerts, p: AlertPayload) {
+    const transport = nodemailer.createTransport({
+      host: OUTLOOK_HOST, port: 587, secure: false, requireTLS: true,
+      auth: { user: a.outlookUser, pass: a.outlookPass },
+      connectionTimeout: SEND_TIMEOUT_MS, greetingTimeout: SEND_TIMEOUT_MS, socketTimeout: SEND_TIMEOUT_MS,
+    });
+    const mail = renderAlertEmail(p);
+    try {
+      await transport.sendMail({
+        from: a.outlookUser, to: a.outlookTo, subject: mail.subject, text: mail.text, html: mail.html,
+        attachments: [{ filename: "mcpwatch.png", content: logoPng(), cid: LOGO_CID, contentType: "image/png", contentDisposition: "inline" }],
+      });
+    } finally {
+      transport.close();
+    }
   }
 
   private async email(a: ProjectAlerts, p: AlertPayload) {
