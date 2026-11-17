@@ -2,9 +2,12 @@
 name = "mcpwatch"
 version = "0.1.0"
 edition = "2024"
-# Current stable. This is the *minimum* a user needs, so raising it narrows who can install the
-# crate; the code itself only needs 1.88, which is also rmcp's own floor.
-rust-version = "1.100"
+# The *minimum* a user needs, not what we build with: rust-toolchain.toml pins development and CI
+# to current stable. 1.88 is what the code actually requires (let-chains) and is also rmcp's own
+# floor, so it shuts nobody out who could use the crate anyway. Raising it would only turn
+# "MCPWatch guards your server" into "MCPWatch guards your server, once you upgrade Rust".
+# Verified by building the whole package with 1.88; CI checks it on every change.
+rust-version = "1.88"
 description = "Security guard for MCP servers in Rust: the official Rust SDK (rmcp), axum/tower, actix-web"
 readme = "README.md"
 license = "MIT"
