@@ -14,7 +14,9 @@ license = "MIT"
 repository = "https://github.com/vedhaai/MCP-Watch"
 homepage = "https://github.com/vedhaai/MCP-Watch#rust"
 documentation = "https://docs.rs/mcpwatch"
-keywords = ["mcp", "model-context-protocol", "security", "guard", "prompt-injection"]
+# crates.io caps a keyword at 20 characters, so "model-context-protocol" (22) cannot be used here
+# as it is in package.json and pyproject.toml. The limit is enforced server-side, after upload.
+keywords = ["mcp", "mcp-server", "security", "guard", "prompt-injection"]
 categories = ["network-programming", "web-programming", "development-tools"]
 # An allow-list, not an exclude-list: it cannot accidentally ship a stray `.env`, an events log or
 # a file somebody adds later. `tests/` stays out because the integration tests need this
