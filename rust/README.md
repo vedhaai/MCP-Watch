@@ -280,7 +280,7 @@ cargo test --features full
 ./check.sh                # everything a CI job would check, including MSRV and Windows
 ```
 
-94 tests. Most run against a stub and need neither Node nor a built engine; the
+95 tests. Most run against a stub and need neither Node nor a built engine; the
 rest run against the **real engine** from this checkout, never `npx`, so no test
 can reach the network. If `engine/dist/cli.js` is missing those fail with a
 message telling you to build it — `MCPWATCH_SKIP_ENGINE_TESTS=1` turns that into
