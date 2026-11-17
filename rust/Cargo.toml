@@ -19,8 +19,8 @@ exclude = ["tests/"]
 
 [features]
 default = ["rmcp"]
-# The official Rust MCP SDK: `mcpwatch::guard(..)` around a server transport.
-rmcp = ["dep:rmcp", "dep:futures"]
+# The official Rust MCP SDK: guards a server transport. `io-std` is what `guard_stdio` needs.
+rmcp = ["dep:rmcp", "tokio/io-std"]
 # A tower layer, for axum and anything else that speaks tower.
 tower = ["dep:tower", "dep:http", "dep:http-body", "dep:http-body-util", "dep:bytes", "dep:pin-project-lite"]
 # actix-web middleware, over the same framework-free HTTP guard.

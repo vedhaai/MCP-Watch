@@ -228,6 +228,11 @@ impl Engine {
         self.0.options.is_fail_open()
     }
 
+    /// How many messages may wait in each direction of a guarded connection.
+    pub fn channel_capacity(&self) -> usize {
+        self.0.options.channel_capacity
+    }
+
     /// Starts the engine now rather than on the first message (that one would wait for it).
     pub async fn start(&self) -> Result<(), EngineUnavailable> {
         let mut state = self.0.start.lock().await;

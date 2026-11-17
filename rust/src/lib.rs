@@ -27,6 +27,13 @@ mod error;
 mod options;
 mod outcome;
 
+#[cfg(feature = "rmcp")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
+pub mod sdk;
+
+#[cfg(feature = "rmcp")]
+pub use sdk::GuardedTransport;
+
 pub use engine::{BoxFuture, Engine, Verdicts};
 pub use error::{EngineUnavailable, GuardError};
 pub use options::{Builder, Clients, EngineOptions, McpWatchOptions, Mode};
@@ -73,6 +80,13 @@ impl McpWatch {
         Ok(Self {
             engine: Some(engine),
         })
+    }
+
+    /// Wraps an engine that is already started, for a host that manages its lifetime itself.
+    pub fn from_engine(engine: Engine) -> Self {
+        Self {
+            engine: Some(engine),
+        }
     }
 
     /// The engine behind this guard, or `None` when MCPWatch is off.
