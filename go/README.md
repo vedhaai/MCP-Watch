@@ -28,11 +28,19 @@ The import path has capitals in it, and Go is case-sensitive about module paths 
 GitHub is not about URLs. `go get github.com/vedhaai/mcp-watch/go` clones successfully and
 then fails with *"module declares its path as …/MCP-Watch/go"*. Copy the path as written.
 
-The engine needs Node 20+. The module starts it for you — the first start resolves it with
-`npx`, which downloads it. To skip that, install it once:
+The engine needs Node 20+ and **`@vedhaai/mcpwatch` 0.4.0 or newer**, which is the version
+that exposes the `mcpwatch engine` sidecar this module speaks to. On an older engine the
+subcommand is not there, the handshake never arrives, and the guard does what it does for any
+engine it cannot start: refuses requests, or passes them if `FailOpen` is set. Either way the
+cause is one line on stderr and nothing at all in the dashboard, so check the version first.
+
+The module starts the engine for you — the first start resolves it with `npx`, which
+downloads it, and that download is the only reason `StartTimeout` defaults to 120s. To skip
+it, install the engine once:
 
 ```bash
 npm install -g @vedhaai/mcpwatch
+npm list -g @vedhaai/mcpwatch   # expect 0.4.0 or newer; the CLI has no --version flag
 ```
 
 ## Modules
