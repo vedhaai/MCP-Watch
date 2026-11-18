@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -96,17 +97,18 @@ func guardedServer(t *testing.T, mode mcpwatch.Mode) (io.Writer, *bufio.Reader, 
 }
 
 type tally struct {
-	mu    chan struct{}
+	mu    sync.Mutex
 	calls []string
 }
 
 func (c *tally) add(name string) {
-	if c.mu == nil {
-		c.mu = make(chan struct{}, 1)
-	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.calls = append(c.calls, name)
 }
 func (c *tally) count(name string) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	n := 0
 	for _, call := range c.calls {
 		if call == name {

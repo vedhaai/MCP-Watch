@@ -195,9 +195,17 @@ func termLen(s string, i int) int {
 // the wild - "\n\n", "\r\n\r\n", "\r\r", "\r\n\n", "\n\r\n" and "\r\r\n" - and matching only
 // the common three means the guard never sees some events end, so it holds them for ever.
 //
-// A boundary is only reported when both terminators are fully present. A buffer ending in a
-// lone "\r" is left alone: the next chunk may start with "\n", which makes it one terminator
-// rather than two, and re-scanning the joined buffer gets that right without special cases.
+// A boundary is only reported when both terminators are fully present, and the *first* of
+// them is never allowed to end the buffer: a trailing lone "\r" there may be the first half
+// of "\r\n", so the scan waits and re-reads the joined buffer next time.
+//
+// The *second* terminator gets no such reservation, and that asymmetry is deliberate. A
+// buffer ending "...\r\r" is ambiguous - it is either a complete "\r\r" boundary or a "\r"
+// followed by the start of "\r\n" - and it has to be resolved without the next chunk, which
+// may never come. Reporting the boundary can split an event one byte early, leaving a "\n"
+// to open the next one, which a client parses as a harmless blank line. Waiting instead
+// would mean a "\r\r" stream whose sender pauses is never recognised at all and the event is
+// held for ever, which is the failure this whole function exists to prevent. Early wins.
 func endOfEvent(b []byte) int {
 	s := string(b)
 	for i := 0; i < len(s); {
@@ -210,9 +218,6 @@ func endOfEvent(b []byte) int {
 			return -1 // might be the first half of a boundary; wait for more
 		}
 		if m := termLen(s, i+n); m > 0 {
-			if i+n+m > len(s) {
-				return -1
-			}
 			return i + n + m
 		}
 		i += n

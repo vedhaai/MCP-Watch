@@ -144,6 +144,13 @@ type Engine struct {
 	notes     chan note
 	notesOnce sync.Once
 	notesDone chan struct{}
+	// Guards the send on e.notes against the close in Shutdown. A select with a default arm
+	// does NOT make that safe: a send on a closed channel is chosen and then panics, so the
+	// default is never reached. RenameSession, DropSession and NoteEventID are documented as
+	// infallible and are called from deferred cleanup, which is exactly where a Close has
+	// usually just happened.
+	notesMu     sync.RWMutex
+	notesClosed bool
 }
 
 var _ Verdicts = (*Engine)(nil)
@@ -320,7 +327,17 @@ func (e *Engine) spawn(ctx context.Context, command []string) (*child, error) {
 
 // read is the one goroutine that consumes the engine's stdout.
 func (e *Engine) read(c *child, stdout io.Reader) {
-	defer c.failAll()
+	// Killing the child on the way out is what makes a restart possible. If this goroutine
+	// stops while the process is still alive - a read error, or output that is not JSON at
+	// all - nothing drains its stdout and nothing ever closes c.exited, so ensureStarted
+	// keeps handing back the same wedged child and every later check waits out the full call
+	// timeout and fails closed. Killing it closes c.exited through the waiter, and the
+	// restart damper then governs the retry. On a child that has already exited this is a
+	// no-op.
+	defer func() {
+		c.failAll()
+		killGroup(c.cmd)
+	}()
 	r := bufio.NewReaderSize(stdout, 64<<10)
 	garbage := 0
 	for {
@@ -367,13 +384,17 @@ func (e *Engine) read(c *child, stdout io.Reader) {
 
 // call sends one request and waits for the answer with that id.
 func (e *Engine) call(ctx context.Context, op string, fields map[string]any) (*answer, error) {
-	ctx, cancel := context.WithTimeout(ctx, e.opts.callTimeout())
-	defer cancel()
-
+	// Starting is governed by StartTimeout, which ensureStarted applies itself; the call
+	// timeout covers only the round trip. Wrapping both in the call timeout would silently
+	// cap a lazy first start at 60s and kill it mid-handshake - defeating the 120s default,
+	// which exists purely so an `npx -y @vedhaai/mcpwatch` cold download can finish.
 	c, err := e.ensureStarted(ctx)
 	if err != nil {
 		return nil, err
 	}
+
+	ctx, cancel := context.WithTimeout(ctx, e.opts.callTimeout())
+	defer cancel()
 
 	id := e.ids.Add(1) // never 0
 	line, err := encodeRequest(id, op, fields)
@@ -548,10 +569,17 @@ func (e *Engine) startNotes() {
 	})
 }
 
-// send queues a note. It never blocks: these are called from the SSE hot path and from
-// deferred cleanup. A full queue means the engine is wedged, and dropping bookkeeping is
-// better than stalling the server that is trying to serve a request.
+// send queues a note. It never blocks and never panics: these are called from the SSE hot
+// path and from deferred cleanup. A full queue means the engine is wedged, and dropping
+// bookkeeping is better than stalling the server that is trying to serve a request.
 func (e *Engine) send(op string, fields map[string]any) {
+	e.notesMu.RLock()
+	defer e.notesMu.RUnlock()
+	if e.notesClosed {
+		// After Shutdown there is nobody to deliver to. Dropping the note is right; panicking
+		// on a closed channel would take the caller's whole process down from a defer.
+		return
+	}
 	select {
 	case e.notes <- note{op: op, fields: fields}:
 	default:
@@ -604,6 +632,11 @@ func (e *Engine) Shutdown(ctx context.Context) error {
 	// Let any queued rename/drop/eventId reach the engine before stdin closes.
 	started := false
 	e.notesOnce.Do(func() { started = true }) // if it never ran, claim it so nothing starts now
+	// Shut the door before closing the channel, so a concurrent send either queues its note
+	// or sees notesClosed - never races the close itself.
+	e.notesMu.Lock()
+	e.notesClosed = true
+	e.notesMu.Unlock()
 	if !started {
 		close(e.notes)
 		select {

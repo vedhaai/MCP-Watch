@@ -23,9 +23,11 @@
 // no package outside the SDK can implement. A wrapper compiles, works, and silently stops
 // tracking the negotiated protocol version.
 //
-// [Receiving] and [Sending] are a fallback for a server whose transport you do not own.
-// Read their documentation before choosing them: at this SDK version they cannot see the
-// wire id, so they synthesise one.
+// The SDK's own AddReceivingMiddleware and AddSendingMiddleware hooks are deliberately not
+// used. They operate on decoded Request and Result values rather than on the wire, so the
+// JSON-RPC id has already been through Go's decoder by the time a guard sees it, and the
+// bytes handed to the engine are a re-serialisation rather than what the peer actually sent.
+// Both matter here: the engine compares its answer against the exact submitted bytes.
 //
 // For a Streamable HTTP server, prefer the core module's nethttp.Middleware. It is the only
 // adapter that also sees GET and DELETE, the request headers and the SSE body, which is

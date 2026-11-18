@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -51,11 +52,23 @@ func startProxy(t *testing.T, mode string) *proxy {
 	if err := os.WriteFile(serverJS, []byte(fakeServer), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// cmd/go puts its own directory on PATH for test subprocesses, so a bare "go" resolves
+	// even when the toolchain is not on the developer's PATH. Falling back to GOROOT keeps
+	// that from being load-bearing.
+	goBin, err := exec.LookPath("go")
+	if err != nil {
+		goBin = filepath.Join(runtime.GOROOT(), "bin", "go")
+		if _, statErr := os.Stat(goBin); statErr != nil {
+			t.Skipf("no Go toolchain to build the proxy with: %v", err)
+		}
+	}
 	bin := filepath.Join(dir, "mcpwatch-proxy")
-	build := exec.Command("go", "build", "-o", bin, ".")
+	build := exec.Command(goBin, "build", "-o", bin, ".")
 	build.Stderr = os.Stderr
+	// Deliberately fatal, not a skip. The toolchain was found, so a failure here means the
+	// proxy does not compile - and a skip would let the gate report success anyway.
 	if err := build.Run(); err != nil {
-		t.Skipf("could not build the proxy: %v", err)
+		t.Fatalf("the proxy does not build: %v", err)
 	}
 
 	cmd := exec.Command(bin, "--name", "go-proxy-test", "--mode", mode, "--", "node", serverJS)

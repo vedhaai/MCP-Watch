@@ -148,11 +148,18 @@ func HeadersFrom(h map[string][]string) map[string]string {
 	out := make(map[string]string, len(h))
 	for name, values := range h {
 		lower := strings.ToLower(name)
+		// RFC 6265 folds repeated Cookie headers with "; ", not with the "," every other
+		// header uses. No rule reads cookies today, so this costs nothing now and stops the
+		// first one that does from parsing a mangled value.
+		sep := ", "
+		if lower == "cookie" {
+			sep = "; "
+		}
 		if existing, ok := out[lower]; ok {
-			out[lower] = existing + ", " + strings.Join(values, ", ")
+			out[lower] = existing + sep + strings.Join(values, sep)
 			continue
 		}
-		out[lower] = strings.Join(values, ", ")
+		out[lower] = strings.Join(values, sep)
 	}
 	return out
 }

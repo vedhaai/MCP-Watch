@@ -22,12 +22,11 @@ import (
 )
 
 type config struct {
-	paths         []string
-	maxBodyBytes  int
-	encrypted     *bool
-	reportRemote  bool
-	logf          func(string, ...any)
-	skipSetRemote bool
+	paths        []string
+	maxBodyBytes int
+	encrypted    *bool
+	reportRemote bool
+	logf         func(string, ...any)
 }
 
 // An Option configures the middleware.
@@ -51,7 +50,7 @@ func Encrypted(yes bool) Option { return func(c *config) { c.encrypted = &yes } 
 // default for this middleware, which is the one adapter that also relays SSE and can
 // therefore report the event ids MW037 needs to match a resumption against.
 func ReportRemoteAddress(yes bool) Option {
-	return func(c *config) { c.reportRemote = yes; c.skipSetRemote = !yes }
+	return func(c *config) { c.reportRemote = yes }
 }
 
 // Logger receives one-line operational warnings. Never give it os.Stdout on a stdio server.
@@ -156,7 +155,7 @@ func infoFromRequest(r *http.Request, cfg *config) *mcpwatch.HTTPInfo {
 	}
 	info := &mcpwatch.HTTPInfo{Headers: headers}
 
-	if cfg.reportRemote && !cfg.skipSetRemote && r.RemoteAddr != "" {
+	if cfg.reportRemote && r.RemoteAddr != "" {
 		addr := r.RemoteAddr
 		if host, _, err := net.SplitHostPort(addr); err == nil {
 			addr = host
