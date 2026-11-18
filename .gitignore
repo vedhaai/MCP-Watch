@@ -13,6 +13,13 @@ target/
 dotnet/**/bin/
 dotnet/**/obj/
 
+# Go package
+go/**/vendor/
+go.work
+go.work.sum
+go/cmd/mcpwatch-proxy/mcpwatch-proxy
+*.test
+
 # Python package
 .venv*/
 __pycache__/

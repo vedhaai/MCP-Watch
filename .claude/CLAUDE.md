@@ -6,9 +6,10 @@ Project context for Claude Code. Keep it short; deeper detail lives in [README.m
 
 - `settings.json`: shared permissions plus hooks.
 - `hooks/guard-edits.mjs`: blocks edits to generated or secret files (`generated/`, `public/`, `dist/`, `secret.key`, `.env*`, lockfile).
-- `hooks/guard-bash.mjs`: blocks force-push, push to `main`, `--no-verify`, hard reset and publish commands.
+- `hooks/guard-bash.mjs`: blocks force-push, push to `main`, `--no-verify`, hard reset, publish commands, and release-tag pushes (`go/v*`, `--tags`) and GitHub releases.
 - `hooks/typecheck.mjs`: runs `tsc --noEmit` on the package after you edit a `.ts`/`.tsx` file.
 - `skills/`: `add-rule`, `verify`, `release-check`, `security-hardening-review`.
+- `rules/`: path-scoped guidance (`engine`, `backend`, `frontend`, `python-java`, `rust`, `go`).
 
 ## What this is
 
@@ -26,6 +27,7 @@ Repo: https://github.com/vedhaai/MCP-Watch · License: MIT · Node >= 20.
 | `python/` | `vedhaai-mcpwatch` (PyPI) | Python adapter; spawns `mcpwatch engine` as a child process. |
 | `java/` | `ai.vedha:mcpwatch` (Maven) | Java adapter (MCP Java SDK, servlet filter); also spawns the engine. |
 | `rust/` | `mcpwatch` (crates.io) | Rust adapter (rmcp transport, tower/axum layer, actix-web, `mcpwatch-proxy`); also spawns the engine. |
+| `go/` | `github.com/vedhaai/MCP-Watch/go` | Go adapter (one `net/http` middleware, the official Go SDK, mark3labs/mcp-go, `mcpwatch-proxy`); also spawns the engine. Core module is stdlib-only; the SDK adapters are nested modules. |
 | `dotnet/` | `Vedhaai.MCPWatch` (NuGet) | .NET adapter (`netstandard2.0`: .NET Framework 4.6.1+ and modern .NET): `Engine` + ordered `McpWatchGuard`, no dependencies; also spawns the engine. No SDK/ASP.NET wrapper yet. |
 | `docs/` | | `architecture.svg` |
 
@@ -42,7 +44,9 @@ npm run dev            # all three in watch mode; open http://localhost:5173
 npm test               # engine + backend tests
 npm run test:python    # cd python && pytest
 npm run test:java      # cd java && mvn -B test (Java 17+)
+npm run test:rust      # cd rust && cargo test --features full
 npm run test:dotnet    # cd dotnet && dotnet test (net48 + net6.0; net48 needs Windows)
+npm run test:go        # cd go && go test ./... (Go 1.23+)
 npm run scan | rules | ai | pins:reset
 ```
 
@@ -51,10 +55,10 @@ One package: `npm test -w engine`, `npm run build -w backend`, etc. Tests are `*
 ## Conventions and gotchas
 
 - Engine never depends on the dashboard. A guard must keep working if the dashboard is down (events fall back to `~/.mcpwatch/events.jsonl`).
-- Python, Java and .NET do not re-implement rules; they only move messages to the Node engine. Change rule behaviour in `engine/`, not in the adapters.
+- Python, Java, Rust, .NET and Go do not re-implement rules; they only move messages to the Node engine. Change rule behaviour in `engine/`, not in the adapters.
 - `Engine.fromClient`/`fromServer` are async (AI reviewer). Wrappers keep a per-direction promise queue so messages never overtake each other; preserve this.
 - Verdicts: `-32001` blocked, `-32002` throttled. Modes: `observe`, `protect`, `enforce`. User block/trust lists override mode.
-- Fail-open: Python/Java/.NET adapters pass messages unchecked if the engine can't start (configurable); the Node engine's `failOpen` defaults to refusing.
+- Fail-open: the Python/Java/Rust/.NET/Go adapters pass messages unchecked if the engine can't start (configurable); the Node engine's `failOpen` defaults to refusing.
 - Generated or ignored, never commit: `backend/src/generated/` (tsoa output), `backend/public/` (frontend build), `dist/`, `secret.key` (dashboard encryption key), `.env*`, Java `target/`, .NET `bin/` and `obj/`, Python venvs and caches.
 - Fake secrets in tests/docs must not look like real keys (they trigger secret scanners); see commit 3ee2a88.
 - Dashboard binds to 127.0.0.1; secrets are stored encrypted (`secret-box.ts`); outbound URLs go through `safe-url.ts`. Keep these hardening properties when changing the backend.

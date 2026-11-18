@@ -14,3 +14,5 @@ Run from the repo root, in this order, and stop at the first failure to diagnose
 5. Only if `rust/` changed: `npm run test:rust` (needs Rust 1.88+). Before a release, or when touching `Cargo.toml`, run `rust/check.sh` instead: it adds the checks nobody runs by hand — format, clippy, docs, every feature on its own, the declared MSRV, and Windows.
 
 Report per step: passed or failed, with the failing test names and the first error. If a step was skipped, say why. Do not claim success for steps that did not run. Do not edit tests to make them pass without telling the user.
+6. `npm run test:dotnet` - the .NET package (needs the .NET SDK).
+7. `npm run test:go` - the Go package (needs Go 1.23+). `cd go && ./check.sh` additionally cross-builds for Windows and macOS and asserts the core module has no dependencies; run it before any Go release.
