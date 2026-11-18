@@ -5,9 +5,9 @@ description: Pre-release checklist for MCPWatch packages (npm engine and dashboa
 
 # Release check
 
-Never run `npm publish`, `twine upload` or `mvn deploy`. Report readiness and let the user publish.
+Never run `npm publish`, `twine upload` or `mvn deploy`, `cargo publish`, `dotnet nuget push`, and pushing a `go/v*` tag. Report readiness and let the user publish.
 
-1. **Versions**: compare `version` in `engine/package.json`, `backend/package.json`, `python/pyproject.toml` and `java/pom.xml` with the published ones (`npm view @vedhaai/mcpwatch version`, `npm view @vedhaai/mcpwatch-dashboard version`, PyPI and Maven Central). Each must be higher than what is published. Check the backend's dependency on the engine version too.
+1. **Versions**: compare `version` in `engine/package.json`, `backend/package.json`, `python/pyproject.toml` and `java/pom.xml`, `rust/Cargo.toml`, `dotnet/src/Vedhaai.MCPWatch/Vedhaai.MCPWatch.csproj`, `go/go.mod` (Go has no version field: the git tag `go/vX.Y.Z` is the version) with the published ones (`npm view @vedhaai/mcpwatch version`, `npm view @vedhaai/mcpwatch-dashboard version`, PyPI and Maven Central). Each must be higher than what is published. Check the backend's dependency on the engine version too.
 2. **Clean tree on the right branch**: `git status` clean; release PR goes `develop` -> `main`.
 3. **Run the `verify` skill**: build and all tests, including Python and Java.
 4. **Package contents**: `npm pack --dry-run -w engine` and `-w backend` must contain `dist/` (and `public/` for the backend) and no `secret.key`, `.env`, tests or source maps of secrets.

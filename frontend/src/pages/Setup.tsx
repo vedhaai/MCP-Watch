@@ -139,6 +139,31 @@ if (r.ForwardJson != null) WriteToClient(r.ForwardJson);`} />],
       start,
     ];
   }
+  if (p.kind === "middleware-go") {
+    return [
+      ["Add MCPWatch to your server's build", <>
+        <CopyBlock text={`go get github.com/vedhaai/MCP-Watch/go
+
+# For the official Go SDK add:        go get github.com/vedhaai/MCP-Watch/go/mcpsdk
+# For mark3labs/mcp-go add:           go get github.com/vedhaai/MCP-Watch/go/mcpgo`} />
+        <P>Needs Go 1.23+. The core module has no dependencies outside the standard library. The checks run in the MCPWatch engine, which needs Node 20+. The module starts it for you (the first start resolves it with npx). To skip that, install it once:</P>
+        <CopyBlock text="npm install -g @vedhaai/mcpwatch" />
+      </>],
+      ["Add one line to your server", <CopyBlock text={`// Any HTTP server - net/http, chi, gorilla, echo. Register it innermost,
+// inside any compression middleware.
+watch := mcpwatch.Start(ctx, "my-tools", mcpwatch.Options{})
+defer watch.Close()
+
+mux.Handle("/mcp", nethttp.Middleware(watch.Verdicts())(mcpHandler))
+
+// Official Go SDK, over stdio
+transport, done := mcpsdk.GuardStdio(ctx, watch)   // \u2190 the only line changed
+defer done()
+session, err := server.Connect(ctx, transport, nil)`} />],
+      ["Give it your project key", <><P>Set these where your server runs (PowerShell shown). Or pass them in code: <M>mcpwatch.Options{"{ ProjectKey: \u2026, Server: \u2026 }"}</M>.</P><CopyBlock text={env} /></>],
+      start,
+    ];
+  }
   if (p.kind === "proxy-stdio") {
     const cfg = JSON.stringify({ "my-server": { command: "npx", args: ["-y", ENGINE, "--project-key", p.key, "--server", server, "--", "npx", "-y", "@modelcontextprotocol/server-filesystem", "C:/mcp-test"] } }, null, 2);
     return [

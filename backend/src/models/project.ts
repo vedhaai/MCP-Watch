@@ -1,6 +1,6 @@
 import type { Mode } from "@vedhaai/mcpwatch";
 
-export type ProjectKind = "middleware" | "middleware-python" | "middleware-java" | "middleware-rust" | "middleware-dotnet" | "proxy-stdio" | "proxy-http";
+export type ProjectKind = "middleware" | "middleware-python" | "middleware-java" | "middleware-rust" | "middleware-dotnet" | "middleware-go" | "proxy-stdio" | "proxy-http";
 export type AiProvider = "off" | "local" | "api";
 
 export interface Project {

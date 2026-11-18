@@ -7,6 +7,7 @@ export const KINDS: Record<ProjectKind, [string, string]> = {
   "middleware-java": ["Java MCP server", "MCP Java SDK, Spring Boot, Quarkus: add one line or a servlet filter. Needs Node 20+ installed."],
   "middleware-rust": ["Rust MCP server", "Official Rust SDK (rmcp), axum/tower or actix-web: add one line to your server code. Needs Node 20+ installed."],
   "middleware-dotnet": [".NET MCP server (C#, .NET Framework)", "C# or VB.NET on .NET Framework 4.6.1+ or modern .NET: guard the messages your server reads and writes. Needs Node 20+ installed."],
+  "middleware-go": ["Go MCP server", "net/http, the official Go SDK or mark3labs/mcp-go: add one line to your server code. Needs Node 20+ installed."],
   "proxy-stdio": ["Any local (stdio) MCP server", "For servers you can't edit (npx, uvx, Python…). Change the client config only."],
   "proxy-http": ["Any remote (HTTP) MCP server", "Run a local proxy in front of the server's URL."],
 };

@@ -31,6 +31,7 @@ Each part has its own folder and its own npm package (npm workspaces):
 | [java/](java) | `ai.vedha:mcpwatch` (Maven) | The Java package: the official MCP Java SDK, and a servlet filter for Spring Boot, Quarkus, Jetty or Tomcat |
 | [rust/](rust) | `mcpwatch` (crates.io) | The Rust package: the official Rust SDK (rmcp), a tower layer for axum, actix-web middleware, and the `mcpwatch-proxy` binary |
 | [dotnet/](dotnet) | `Vedhaai.MCPWatch` (NuGet) | The .NET package for C# and VB.NET servers (.NET Framework 4.6.1+ and modern .NET): a guard you put where your server reads and writes messages |
+| [go/](go) | `github.com/vedhaai/MCP-Watch/go` | The Go package: one `net/http` middleware for every framework, the official Go SDK, mark3labs/mcp-go, and a `mcpwatch-proxy` binary |
 
 Each package keeps its tests in its own `test/` folder.
 
@@ -64,6 +65,7 @@ Every script:
 | `npm run test:java` | The Java package's tests (needs Java 17+ and Maven) |
 | `npm run test:rust` | The Rust package's tests (needs Rust 1.88+) |
 | `npm run test:dotnet` | The .NET package's tests (needs the .NET SDK; the .NET Framework 4.8 run needs Windows) |
+| `npm run test:go` | The Go package's tests (needs Go 1.23+) |
 | `npm run scan` | Check the MCP servers configured on this machine. Pass options after `--`, e.g. `npm run scan -- --connect` |
 | `npm run ai` | Score the AI reviewer's model on 50 labelled messages (attacks caught, false alarms) |
 | `npm run rules` / `npm run pins:reset` | List the rules / forget pinned tool definitions |
@@ -76,6 +78,7 @@ Every script:
    - **Java server** (MCP Java SDK, Spring Boot, Quarkus): Java middleware.
    - **Rust server** (rmcp, axum, actix-web): Rust middleware.
    - **.NET server** (C#, including .NET Framework): the [.NET package](dotnet).
+   - **Go server** (net/http, the official Go SDK, mark3labs/mcp-go): Go middleware.
    - **Any local server:** stdio proxy.
    - **Any remote server:** HTTP proxy.
 2. The **Setup** page shows the steps with your project key filled in. It says *Waiting…* until your server first contacts the dashboard, then turns **Connected**.
@@ -198,6 +201,23 @@ mcpwatch = "0.1"
 ```
 
 As for Python and Java, the checks run in this package's engine, which the Rust package starts as a child process (`mcpwatch engine`, JSON lines over stdin/stdout), so Rust servers get the same rules, AI reviewer, dashboard reporting and live settings as Node servers, and **Node 20+ must be installed** next to Rust. It needs Rust 1.88+, takes the same `MCPWATCH_*` variables, and keeps every dependency beyond `serde`, `tokio` and the `log` facade behind the feature that needs it. It also ships `mcpwatch-proxy`, a Rust build of the stdio proxy below. Setup, options and tests: [rust/README.md](rust/README.md).
+
+## Go servers (net/http, the official Go SDK, mark3labs/mcp-go)
+
+```bash
+go get github.com/vedhaai/MCP-Watch/go
+```
+
+```go
+watch := mcpwatch.Start(ctx, "my-tools", mcpwatch.Options{})
+defer watch.Close()
+
+mux.Handle("/mcp", nethttp.Middleware(watch.Verdicts())(mcpHandler))
+```
+
+As for Python, Java, Rust and .NET, the checks run in this package's engine, which the Go module starts as a child process (`mcpwatch engine`, JSON lines over stdin/stdout), so Go servers get the same rules, AI reviewer, dashboard reporting and live settings as Node servers, and **Node 20+ must be installed** next to Go. It needs Go 1.23+ and takes the same `MCPWATCH_*` variables.
+
+Where Rust needs a separate tower layer and actix-web middleware, Go needs one: `func(http.Handler) http.Handler` is the whole ecosystem's interface, so a single middleware covers net/http, chi, gorilla/mux and echo alike. The core module depends on **nothing outside the standard library**; the two SDK adapters are separate modules (`go/mcpsdk`, `go/mcpgo`) so their dependencies and their newer minimum Go never reach a server that only wants the middleware. It also ships `mcpwatch-proxy`, a Go build of the stdio proxy below. Setup, options and tests: [go/README.md](go/README.md).
 
 ## Proxy: for MCP servers you can't edit
 
@@ -385,7 +405,7 @@ Settings about the guard itself:
 
 | Setting | Default | What it does |
 |---|---|---|
-| `failOpen` | `false` | If a check throws, refuse the request with `-32001`. `true` forwards it unchecked. Notifications and responses have no id to answer, so they pass either way. (The Python, Java and Rust adapters have their own `fail_open` / `failOpen` for the case where the engine process can't run; it now defaults to `false` there too.) |
+| `failOpen` | `false` | If a check throws, refuse the request with `-32001`. `true` forwards it unchecked. Notifications and responses have no id to answer, so they pass either way. (The Python, Java, Rust, .NET and Go adapters have their own `fail_open` / `failOpen` / `FailOpen` for the case where the engine process can't run; it defaults to `false` there too.) |
 | `maxBodyBytes` | 10 000 000 | HTTP proxy: the largest request body it reads (413 beyond), and the largest single SSE event it buffers |
 | `upstreamTimeoutMs` | 60 000 | HTTP proxy: how long the upstream has to start answering |
 | `aiMaxConcurrent` | 8 | Most reviews with the model at once; up to 64 more wait, the rest skip the review (rules only, or MA002 when `required`) |
@@ -442,5 +462,7 @@ The backend's 3, in [backend/test](backend/test):
 The Python package has its own tests (`npm run test:python`, after installing it as shown in [python/README.md](python/README.md#tests)). They cover an SDK server over stdio and Streamable HTTP, Flask, Django, plain ASGI and WSGI apps, and the engine being unavailable.
 
 The Java package has 59, in [java/src/test](java/src/test/java/ai/vedha/mcpwatch) (`npm run test:java`, needs Java 17+ and Maven). They run against the engine built in this repository, so they check real verdicts: the JSON codec, the sidecar protocol, the HTTP guard's JSON and SSE handling, the servlet filter end to end through a real Jetty server, and the SDK transport and session wrapper.
+
+The Go package has 65, in [go/](go) (`npm run test:go`, needs Go 1.23+). The split is the same as Rust's: most answer from a stub `Verdicts` and need no engine build, covering SSE boundary scanning in all six terminator forms, batch refusals, session naming and the response rewriting. The rest run against the engine built in this repository, so they check real verdicts: the sidecar protocol under concurrent load, the `net/http` middleware through a real server (including that an SSE stream still streams), the official Go SDK over a byte pipe with a real SDK server, mark3labs/mcp-go behind its Streamable HTTP handler, and the `mcpwatch-proxy` binary against a real child server. A handful drive a deliberately misbehaving fake engine — one that answers slowly, or emits nothing but noise — because the real engine cannot be made to start late or wedge, and those are the states the guard has to survive. `go/check.sh` additionally cross-builds for Windows, macOS and arm64 and asserts that the core module has no dependencies.
 
 The Rust package has 95, in [rust/src](rust/src) and [rust/tests](rust/tests) (`npm run test:rust`, needs Rust 1.88+). Most answer from a stub, so they need no engine build: SSE boundary scanning, UTF-8 split across chunks, batch refusals and session naming. The rest run against the engine built in this repository, so they check real verdicts: the sidecar protocol under concurrent load, the rmcp transport guard over a byte pipe, the tower layer through a real axum server (including that an SSE stream still streams), the same cases through actix-web, and the `mcpwatch-proxy` binary against a real child server.

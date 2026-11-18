@@ -440,7 +440,7 @@ test("dashboard: project and AI keys are encrypted on disk, and the settings a g
 // Every kind the dashboard offers must survive the generated request validator, which carries its own
 // copy of ProjectKind. A package added to the type but not rebuilt into the validator would 4xx here.
 const PROJECT_KINDS = [
-  "middleware", "middleware-python", "middleware-java", "middleware-rust", "middleware-dotnet",
+  "middleware", "middleware-python", "middleware-java", "middleware-rust", "middleware-dotnet", "middleware-go",
   "proxy-stdio", "proxy-http",
 ];
 

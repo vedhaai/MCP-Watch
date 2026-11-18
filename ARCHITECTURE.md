@@ -49,6 +49,7 @@ The repo is an npm workspace. Each part has its own folder, package and tests:
 | [python/](python) | `vedhaai-mcpwatch` (PyPI) | Inside your Python MCP server | The engine, started as `mcpwatch engine` |
 | [java/](java) | `ai.vedha:mcpwatch` (Maven) | Inside your Java MCP server | The engine, started as `mcpwatch engine` |
 | [rust/](rust) | `mcpwatch` (crates.io) | Inside your Rust MCP server | The engine, started as `mcpwatch engine` |
+| [go/](go) | `github.com/vedhaai/MCP-Watch/go` | Inside your Go MCP server | The engine, started as `mcpwatch engine` |
 | [dotnet/](dotnet) | `Vedhaai.MCPWatch` (NuGet) | Inside your C# or VB.NET MCP server, on .NET Framework 4.6.1+ or modern .NET | The engine, started as `mcpwatch engine` |
 
 The engine never depends on the dashboard, so a guard works without one: events then go to `~/.mcpwatch/events.jsonl`.
@@ -57,15 +58,15 @@ The engine never depends on the dashboard, so a guard works without one: events 
 
 | Part | Code | What it does |
 |---|---|---|
-| **Guard** | [engine/src](engine/src): [engine.ts](engine/src/engine.ts), [rules.ts](engine/src/rules.ts), [state.ts](engine/src/state.ts), [transport.ts](engine/src/transport.ts) | One engine, seven ways in (below). Runs the rules, keeps session state in memory, decides allow / throttle / block / strip / redact, and reports in the background. |
+| **Guard** | [engine/src](engine/src): [engine.ts](engine/src/engine.ts), [rules.ts](engine/src/rules.ts), [state.ts](engine/src/state.ts), [transport.ts](engine/src/transport.ts) | One engine, eight ways in (below). Runs the rules, keeps session state in memory, decides allow / throttle / block / strip / redact, and reports in the background. |
 | **AI reviewer** | [ai.ts](engine/src/ai.ts) | Calls any OpenAI-compatible endpoint (Ollama by default) with the relevant slice of the rule catalog. Answers are checked, cached and merged into the rule findings. |
 | **Dashboard** | [app.ts](backend/src/app.ts), [controllers/](backend/src/controllers), [services/](backend/src/services), [data/](backend/src/data), [cli.ts](backend/src/cli.ts), [frontend/](frontend) | `@vedhaai/mcpwatch-dashboard`, started with `mcpwatch-dashboard`. Express + tsoa server on 127.0.0.1:9100, in three layers: tsoa controllers (routes, auth, request validation; tsoa generates the Express routes and an OpenAPI spec into `src/generated/` at build time), services (the rules), and the data layer (JSON files). It serves the web app (React + TypeScript + MUI, built by Vite into `backend/public/`). `/api/agent/*` for guards (project key), `/api/*` for the page (login cookie). Stores everything as JSON files. |
 | **Reporting** | [headerwatch.ts](engine/src/headerwatch.ts), [events.ts](engine/src/events.ts) | Batches events to `POST /api/agent/events` about once a second and polls `GET /api/agent/config` every 5 s. It uses the same agent API as Headerwatch, so a Headerwatch server works too. |
 | **Scan** | [scan.ts](engine/src/scan.ts) | `mcpwatch scan` runs before any server starts. It checks the MCP server lists of Claude Desktop, Claude Code, Cursor, VS Code and Windsurf (MS001–MS007). |
 
-### Seven ways in
+### Eight ways in
 
-All seven run the same `Engine`. Only the wrapping differs.
+All eight run the same `Engine`. Only the wrapping differs.
 
 | Mode | File | Sits between | Use when |
 |---|---|---|---|
@@ -75,9 +76,10 @@ All seven run the same `Engine`. Only the wrapping differs.
 | Python middleware | [python/mcpwatch](python/mcpwatch), [engine-server.ts](engine/src/engine-server.ts) | The Python SDK's streams (stdio, SSE), or the HTTP layer (ASGI, WSGI, Django middleware) | You own a Python server: MCP SDK, Django, Flask, FastAPI |
 | Java middleware | [java/src/main/java](java/src/main/java/ai/vedha/mcpwatch), [engine-server.ts](engine/src/engine-server.ts) | The Java SDK's transport provider and session, or the servlet chain | You own a Java server: MCP Java SDK, Spring Boot, Quarkus, Jetty, Tomcat |
 | Rust middleware | [rust/src](rust/src), [engine-server.ts](engine/src/engine-server.ts) | The Rust SDK's transport, or a tower / actix-web stack | You own a Rust server: rmcp, axum, actix-web |
+| Go middleware | [go/](go), [engine-server.ts](engine/src/engine-server.ts) | An `http.Handler` chain, or the SDK's byte stream | You own a Go server: net/http, chi, gorilla, the official Go SDK, mark3labs/mcp-go |
 | .NET guard | [dotnet/src](dotnet/src/Vedhaai.MCPWatch), [engine-server.ts](engine/src/engine-server.ts) | Wherever your server reads and writes messages — you call it, nothing is wrapped | You own a C# or VB.NET server, including on .NET Framework |
 
-**Python, Java, Rust and .NET.** None of these packages re-implements the rules. Each starts `mcpwatch engine` as a child process: one engine per guarded server, with one JSON line per message each way. Both sides only move messages, so a Python, Java, Rust or .NET server gets exactly the verdicts a Node one would.
+**Python, Java, Rust, .NET and Go.** None of these packages re-implements the rules. Each starts `mcpwatch engine` as a child process: one engine per guarded server, with one JSON line per message each way. Both sides only move messages, so a Python, Java, Rust, .NET or Go server gets exactly the verdicts a Node one would.
 
 The first three hook a transport or a framework, so the call site is hidden. **.NET is the exception, by design**: it guards no transport and wraps nothing. You hand `McpWatchGuard` each JSON-RPC line and act on the `Outcome` it returns. That is what lets one package cover a hand-written stdio loop, a Windows service, an HTTP handler and an SDK transport hook alike — including .NET Framework, where there is no middleware pipeline to hook in the first place. The cost is that the integration is explicit: miss a call site and that path is unguarded, with nothing to notice it.
 
@@ -188,7 +190,7 @@ With a project key, the project's settings win over the guard's local options an
 - **State per process.** Each guard keeps its own sessions and scores. Only pins and the registry are shared, through files.
 - **The AI adds latency and misses things.** A 7B model takes about 0.4–1 s per reviewed message, longer while it loads. In testing it missed a metadata-URL SSRF that MW003 caught. That's why the rules keep the final say.
 - **Polling, not streaming.** The page refreshes every 2 seconds and guards fetch settings every 5.
-- **Python, Java, Rust and .NET servers need Node.** All four packages are thin adapters; the engine is the Node one. Each check is a round trip over a local pipe: about 0.3 ms on a laptop without AI review. Several adapters can't send a reply to the server for a refused server-to-client request (sampling, elicitation): Python's Django middleware, Java's servlet filter and Rust's two HTTP adapters all drop the request and log it. Wrap the app with `McpWatchASGI` / `McpWatchWSGI`, guard the Java SDK transport with `McpWatch.guard(provider)`, or guard the Rust SDK transport with `watch.guard_stdio()`, if your server sends those.
+- **Python, Java, Rust, .NET and Go servers need Node.** All five packages are thin adapters; the engine is the Node one. Each check is a round trip over a local pipe: about 0.3 ms on a laptop without AI review. Several adapters can't send a reply to the server for a refused server-to-client request (sampling, elicitation): Python's Django middleware, Java's servlet filter and Rust's two HTTP adapters all drop the request and log it. Wrap the app with `McpWatchASGI` / `McpWatchWSGI`, guard the Java SDK transport with `McpWatch.guard(provider)`, or guard the Rust SDK transport with `watch.guard_stdio()`, if your server sends those.
 - **The Java SDK wrapper covers stdio and HTTP+SSE.** Streamable HTTP is guarded with the servlet filter instead. The wrapper also leans on `McpServerSession` being a non-final class with public methods: it is a delegating subclass, so a future SDK release that adds a public method to that class would need a matching override here.
 - **The Rust SDK guard covers stdio and byte streams.** Streamable HTTP is guarded with the tower layer instead, for the same reason as Java's servlet filter. The crate keeps `rmcp` off by default: it has changed major version three times in 73 releases, and a default-on dependency would put the crate's `rmcp` beside the host's the day the next major lands.
 - **The .NET guard is called, not installed.** Nothing wraps your transport, so coverage is exactly the set of call sites you route through it, and a missed one is silently unguarded. That is the price of supporting .NET Framework and hand-written servers, where there is no pipeline to hook. The transport rules (MW030–MW036) need the request headers, which the line-based helpers don't carry: pass them as the `http` argument to `FromClientAsync`, or call `FromHttp` before the body is read.
