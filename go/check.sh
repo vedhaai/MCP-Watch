@@ -81,8 +81,14 @@ done
 if [ "${MCPWATCH_RELEASE:-}" = "1" ]; then
 	for m in "${MODULES[@]}"; do
 		[ "$m" = "." ] && continue
-		grep -qE '^[[:space:]]*require github.com/vedhaai/MCP-Watch/go v[0-9]' "$m/go.mod" \
-			|| fail "$m/go.mod must require a published core version before tagging"
+		# Ask the toolchain rather than grepping the file. `go get` writes a single-line
+		# require, `go mod tidy` folds it into a require ( ... ) block, and a text match for
+		# one form rejects the other - failing a module that is in fact correct.
+		ver=$(cd "$m" && GOWORK=off "$GO" list -m -f '{{.Version}}' github.com/vedhaai/MCP-Watch/go 2>/dev/null || true)
+		case "$ver" in
+		v[0-9]*) ;;
+		*) fail "$m/go.mod must require a published core version before tagging (found: ${ver:-nothing})" ;;
+		esac
 	done
 fi
 [ "$("$GO" list -m)" = "github.com/vedhaai/MCP-Watch/go" ] || fail "wrong module path"
