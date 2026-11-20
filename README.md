@@ -219,6 +219,22 @@ As for Python, Java, Rust and .NET, the checks run in this package's engine, whi
 
 Where Rust needs a separate tower layer and actix-web middleware, Go needs one: `func(http.Handler) http.Handler` is the whole ecosystem's interface, so a single middleware covers net/http, chi, gorilla/mux and echo alike. The core module depends on **nothing outside the standard library**; the two SDK adapters are separate modules (`go/mcpsdk`, `go/mcpgo`) so their dependencies and their newer minimum Go never reach a server that only wants the middleware. It also ships `mcpwatch-proxy`, a Go build of the stdio proxy below. Setup, options and tests: [go/README.md](go/README.md).
 
+## .NET servers (C#, VB.NET, .NET Framework)
+
+The [.NET package](dotnet) adds the same guard to a server written in C# or VB.NET, on .NET Framework 4.6.1+ or modern .NET. It is a guard you put where your server reads and writes messages, one call per message:
+
+```csharp
+var guard = McpWatchGuard.CreateIfEnabled("my-tools", new McpWatchOptions { ProjectKey = "mw_..." });
+Outcome o = await guard.FromClientLineAsync(session, line);   // client -> server
+Outcome r = await guard.FromServerLineAsync(session, json);   // server -> client
+```
+
+```
+dotnet add package Vedhaai.MCPWatch
+```
+
+As for Python, Java and Rust, the checks run in this package's engine, which the .NET package starts as a child process (`mcpwatch engine`, JSON lines over stdin/stdout), so .NET servers get the same rules, AI reviewer, dashboard reporting and live settings as Node servers, and **Node 20+ must be installed** next to .NET. It targets `netstandard2.0` (.NET Framework 4.6.1+, .NET 6 and later), takes the same `MCPWATCH_*` variables, and has no dependencies at all. There is no wrapper for a specific SDK or ASP.NET stack yet: you call the guard where your server reads and writes messages. Setup, options and tests: [dotnet/README.md](dotnet/README.md).
+
 ## Proxy: for MCP servers you can't edit
 
 For third-party servers (e.g. `npx` packages), put `mcpwatch` in front of the server command in the client's config (Claude Desktop, Cursor, Claude Code…). The proxy runs the same engine and rules as the middleware:
@@ -466,3 +482,5 @@ The Java package has 59, in [java/src/test](java/src/test/java/ai/vedha/mcpwatch
 The Go package has 65, in [go/](go) (`npm run test:go`, needs Go 1.23+). The split is the same as Rust's: most answer from a stub `Verdicts` and need no engine build, covering SSE boundary scanning in all six terminator forms, batch refusals, session naming and the response rewriting. The rest run against the engine built in this repository, so they check real verdicts: the sidecar protocol under concurrent load, the `net/http` middleware through a real server (including that an SSE stream still streams), the official Go SDK over a byte pipe with a real SDK server, mark3labs/mcp-go behind its Streamable HTTP handler, and the `mcpwatch-proxy` binary against a real child server. A handful drive a deliberately misbehaving fake engine — one that answers slowly, or emits nothing but noise — because the real engine cannot be made to start late or wedge, and those are the states the guard has to survive. `go/check.sh` additionally cross-builds for Windows, macOS and arm64 and asserts that the core module has no dependencies.
 
 The Rust package has 95, in [rust/src](rust/src) and [rust/tests](rust/tests) (`npm run test:rust`, needs Rust 1.88+). Most answer from a stub, so they need no engine build: SSE boundary scanning, UTF-8 split across chunks, batch refusals and session naming. The rest run against the engine built in this repository, so they check real verdicts: the sidecar protocol under concurrent load, the rmcp transport guard over a byte pipe, the tower layer through a real axum server (including that an SSE stream still streams), the same cases through actix-web, and the `mcpwatch-proxy` binary against a real child server.
+
+The .NET package has 35, in [dotnet/tests](dotnet/tests/Vedhaai.MCPWatch.Tests) (`npm run test:dotnet`, needs the .NET SDK; the .NET Framework 4.8 run needs Windows). They run on both .NET Framework 4.8 and .NET 6, against the engine built in this repository, so they check real verdicts: the JSON codec, the sidecar protocol, `FailOpen` both ways, concurrent callers, and message order within a session.

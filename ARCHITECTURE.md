@@ -43,7 +43,7 @@ The repo is an npm workspace. Each part has its own folder, package and tests:
 
 | Folder | Package | Runs where | Depends on |
 |---|---|---|---|
-| [engine/](engine) | `@vedhaai/mcpwatch` (npm) | Inside your MCP server (middleware), as a proxy, or as a sidecar for Python | Nothing of MCPWatch's |
+| [engine/](engine) | `@vedhaai/mcpwatch` (npm) | Inside your MCP server (middleware), as a proxy, or as a sidecar for the Python, Java, Rust and .NET packages | Nothing of MCPWatch's |
 | [backend/](backend) | `@vedhaai/mcpwatch-dashboard` (npm) | Its own process: `npx @vedhaai/mcpwatch-dashboard` | The engine's public exports: the rule catalog, default policy and `AiReviewer` (for Test AI) |
 | [frontend/](frontend) | private, not published | In the browser; its build goes into `backend/public/`, which the backend serves and ships | The backend's `/api/*` |
 | [python/](python) | `vedhaai-mcpwatch` (PyPI) | Inside your Python MCP server | The engine, started as `mcpwatch engine` |
