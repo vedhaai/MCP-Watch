@@ -1,4 +1,4 @@
-# MCPWatch
+<h1><img src="docs/logo.png" width="48" height="48" align="middle" alt="MCPWatch logo"> MCPWatch</h1>
 
 [![CI](https://github.com/vedhaai/MCP-Watch/actions/workflows/npm-ci.yml/badge.svg)](https://github.com/vedhaai/MCP-Watch/actions/workflows/npm-ci.yml)
 [![npm](https://img.shields.io/npm/v/@vedhaai/mcpwatch?label=npm)](https://www.npmjs.com/package/@vedhaai/mcpwatch)
