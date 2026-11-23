@@ -1,9 +1,16 @@
 # MCPWatch
 
+[![CI](https://github.com/vedhaai/MCP-Watch/actions/workflows/npm-ci.yml/badge.svg)](https://github.com/vedhaai/MCP-Watch/actions/workflows/npm-ci.yml)
+[![npm](https://img.shields.io/npm/v/@vedhaai/mcpwatch?label=npm)](https://www.npmjs.com/package/@vedhaai/mcpwatch)
+[![PyPI](https://img.shields.io/pypi/v/vedhaai-mcpwatch?label=PyPI)](https://pypi.org/project/vedhaai-mcpwatch/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A security guard for MCP servers. It checks every JSON-RPC message between any MCP client and your server, in both directions. You manage it from a dashboard. It works the way Headerwatch does for APIs:
 1. Create a project in the dashboard.
 2. Follow its setup steps to add one line to your MCP server.
 3. Every request from any client shows up in the dashboard. Clients need no changes.
+
+![MCPWatch walkthrough (4 minutes, no sound): create a project, add one line to a server, connect a client, flag a SQL injection, change modes](docs/demo-full.gif)
 
 ```
 Any MCP client (Claude, Cursor, …)          ← no changes
@@ -19,6 +26,46 @@ Any MCP client (Claude, Cursor, …)          ← no changes
 ```
 
 MCPWatch works with any MCP server and any MCP client. It needs no matching client or server of its own.
+
+## Try it in 60 seconds
+
+Put MCPWatch in front of any MCP server you already use. Needs Node 20+. This example wraps the filesystem server; add it to your client's MCP config:
+
+```json
+{
+  "mcpServers": {
+    "files": {
+      "command": "npx",
+      "args": ["-y", "@vedhaai/mcpwatch", "--", "npx", "-y", "@modelcontextprotocol/server-filesystem", "C:/mcp-test"]
+    }
+  }
+}
+```
+
+| Client | Where the config goes |
+|---|---|
+| Claude Desktop | `claude_desktop_config.json` (Settings, Developer, Edit Config) |
+| Claude Code | `claude mcp add files -- npx -y @vedhaai/mcpwatch -- npx -y @modelcontextprotocol/server-filesystem C:/mcp-test` |
+| Cursor | `.cursor/mcp.json` in your project, or `~/.cursor/mcp.json` |
+| VS Code | `.vscode/mcp.json` (use the `servers` key instead of `mcpServers`) |
+
+Restart the client and use the server as usual. Without a project key, events go to `~/.mcpwatch/events.jsonl`. To see them in the dashboard, run `npx @vedhaai/mcpwatch-dashboard`, create a project and add its key with `--project-key`.
+
+To check what is already installed, run `npx @vedhaai/mcpwatch scan`.
+
+## What it catches
+
+| Attack | Rule | What MCPWatch does |
+|---|---|---|
+| Command injection, path traversal, SSRF, SQL and other injection in tool arguments | MW001 to MW004, MW010 | Blocks the call; your tool never runs |
+| Secrets in tool arguments or in server output | MW005, MW025 | Blocks the call or cleans the output |
+| Tool poisoning (hidden instructions in a tool description) | MW020, MW021 | Removes the tool from `tools/list` |
+| Rug pull (a tool changes after you approved it) | MW024 | Removes the tool and reports it |
+| Tool shadowing and name collisions between servers | MW027, MW028 | Reports the collision, or removes a shadowing tool |
+| Prompt injection in server responses | MW022 | Blocks or cleans the response |
+| Over-privileged servers (shell, file-write, network, payments) | MW039 | Reports once per tool list |
+
+The full list is in [Rules](#rules). Modes (`observe`, `protect`, `enforce`) decide what is blocked; see [Modes](#modes).
 
 Each part has its own folder and its own npm package (npm workspaces):
 
